@@ -12,7 +12,9 @@ export interface ChatMessagesProps {
     index: number,
     content: string,
     attachments: AttachmentPayload[],
-  ) => void
+  ) => boolean | "retained" | void
+  editLocked?: boolean
+  isEditLocked?: () => boolean
   onNavigate?: (index: number, direction: "prev" | "next") => void
   onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
@@ -32,6 +34,8 @@ export const ChatMessages = memo(function ChatMessages({
   messages,
   iconAssistant,
   onEdit,
+  editLocked,
+  isEditLocked,
   onNavigate,
   onRetry,
   siblingNavigationPending,
@@ -65,6 +69,8 @@ export const ChatMessages = memo(function ChatMessages({
             index={i}
             iconAssistant={iconAssistant}
             onEdit={onEdit}
+            editLocked={editLocked}
+            isEditLocked={isEditLocked}
             onNavigate={onNavigate}
             onRetry={onRetry}
             siblingNavigationPending={siblingNavigationPending}

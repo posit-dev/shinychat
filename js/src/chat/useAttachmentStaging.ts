@@ -1,10 +1,4 @@
-import {
-  useState,
-  useRef,
-  useCallback,
-  useLayoutEffect,
-  useEffect,
-} from "react"
+import { useState, useRef, useCallback, useLayoutEffect } from "react"
 import {
   processFile,
   totalBytes,
@@ -33,6 +27,10 @@ function toAttachedFiles(payloads: AttachmentPayload[]): AttachedFile[] {
 
 export interface AttachmentStaging {
   attachments: AttachedFile[]
+  /** True while an attachment is being processed. */
+  processing: boolean
+  /** Also guards the interval before the completed result commits. */
+  isProcessing: () => boolean
   downscaleNotice: boolean
   gifConvertedNotice: boolean
   sizeNotice: boolean
@@ -64,84 +62,124 @@ export function useAttachmentStaging({
   maxUploadSize,
   enableUpload,
   focusEditor,
+  canMutate,
 }: {
   uploadAccept: string[]
   maxUploadSize: number | null
   enableUpload?: boolean
   focusEditor: () => void
+  canMutate?: () => boolean
 }): AttachmentStaging {
-  const [attachments, setAttachments] = useState<AttachedFile[]>([])
+  const [stage, setStage] = useState<{
+    attachments: AttachedFile[]
+    downscaleNotice: boolean
+    gifConvertedNotice: boolean
+    sizeNotice: boolean
+  }>({
+    attachments: [],
+    downscaleNotice: false,
+    gifConvertedNotice: false,
+    sizeNotice: false,
+  })
+  const { attachments, downscaleNotice, gifConvertedNotice, sizeNotice } = stage
   const stagedRef = useRef<AttachedFile[]>([])
+  const processingRef = useRef({ count: 0, revision: 0, committedRevision: 0 })
+  const [processingState, setProcessingState] = useState({
+    count: 0,
+    revision: 0,
+  })
+  const isProcessing = useCallback(() => {
+    const current = processingRef.current
+    return current.count > 0 || current.revision !== current.committedRevision
+  }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Publish the committed files before releasing the live submit guard.
     stagedRef.current = attachments
-  }, [attachments])
+    processingRef.current.committedRevision = processingState.revision
+  }, [attachments, processingState.revision])
 
-  const [downscaleNotice, setDownscaleNotice] = useState(false)
-  const [gifConvertedNotice, setGifConvertedNotice] = useState(false)
-  const [sizeNotice, setSizeNotice] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const addFiles = useCallback(
     async (files: FileList | File[]): Promise<void> => {
-      const processed: {
-        file: AttachedFile
-        wasDownscaled: boolean
-        wasConverted: boolean
-      }[] = []
-      for (const file of Array.from(files)) {
-        let result: Awaited<ReturnType<typeof processFile>> = null
-        try {
-          result = await processFile(file, uploadAccept)
-        } catch {
-          continue
-        }
-        if (result) processed.push(result)
-      }
-      if (processed.length === 0) {
-        focusEditor()
-        return
-      }
-
-      let overSize = false
-      let downscaled = false
-      let converted = false
-      setAttachments((prev) => {
-        let bytes = totalBytes(prev)
-        const fits: AttachedFile[] = []
-        for (const { file, wasDownscaled, wasConverted } of processed) {
-          if (maxUploadSize !== null && bytes + file.size > maxUploadSize) {
-            overSize = true
+      if (canMutate && !canMutate()) return
+      const current = processingRef.current
+      current.count++
+      setProcessingState({ count: current.count, revision: current.revision })
+      try {
+        const processed: {
+          file: AttachedFile
+          wasDownscaled: boolean
+          wasConverted: boolean
+        }[] = []
+        for (const file of Array.from(files)) {
+          let result: Awaited<ReturnType<typeof processFile>> = null
+          try {
+            result = await processFile(file, uploadAccept)
+          } catch {
             continue
           }
-          fits.push(file)
-          bytes += file.size
-          if (wasDownscaled) downscaled = true
-          if (wasConverted) converted = true
+          if (result) processed.push(result)
         }
-        return fits.length > 0 ? [...prev, ...fits] : prev
-      })
-      if (overSize) setSizeNotice(true)
-      if (downscaled) setDownscaleNotice(true)
-      if (converted) setGifConvertedNotice(true)
-      focusEditor()
+        if (processed.length === 0) {
+          focusEditor()
+          return
+        }
+
+        setStage((previous) => {
+          let bytes = totalBytes(previous.attachments)
+          let overSize = false
+          let downscaled = false
+          let converted = false
+          const fits: AttachedFile[] = []
+          for (const { file, wasDownscaled, wasConverted } of processed) {
+            if (maxUploadSize !== null && bytes + file.size > maxUploadSize) {
+              overSize = true
+              continue
+            }
+            fits.push(file)
+            bytes += file.size
+            if (wasDownscaled) downscaled = true
+            if (wasConverted) converted = true
+          }
+          return {
+            attachments:
+              fits.length > 0
+                ? [...previous.attachments, ...fits]
+                : previous.attachments,
+            sizeNotice: previous.sizeNotice || overSize,
+            downscaleNotice: previous.downscaleNotice || downscaled,
+            gifConvertedNotice: previous.gifConvertedNotice || converted,
+          }
+        })
+        focusEditor()
+      } finally {
+        current.count--
+        current.revision++
+        setProcessingState({ count: current.count, revision: current.revision })
+      }
     },
-    [uploadAccept, maxUploadSize, focusEditor],
+    [uploadAccept, maxUploadSize, focusEditor, canMutate],
   )
 
-  const removeAttachment = useCallback((id: string): void => {
-    // Removing only lowers the running total, so any prior size-cap notice
-    // is now stale — clear it on every removal.
-    setSizeNotice(false)
-    setAttachments((prev) => {
-      const next = prev.filter((a) => a.id !== id)
-      if (next.length === 0) {
-        setDownscaleNotice(false)
-        setGifConvertedNotice(false)
-      }
-      return next
-    })
-  }, [])
+  const removeAttachment = useCallback(
+    (id: string): void => {
+      if (canMutate && !canMutate()) return
+      // Removing only lowers the running total, so any prior size-cap notice
+      // is now stale — clear it on every removal.
+      setStage((previous) => {
+        const next = previous.attachments.filter((a) => a.id !== id)
+        return {
+          attachments: next,
+          sizeNotice: false,
+          downscaleNotice: next.length > 0 && previous.downscaleNotice,
+          gifConvertedNotice: next.length > 0 && previous.gifConvertedNotice,
+        }
+      })
+    },
+    [canMutate],
+  )
 
   // DOM nodes of the staged-attachment containers, indexed by position, so a
   // keyboard removal can shift focus to the right sibling afterwards.
@@ -152,6 +190,7 @@ export function useAttachmentStaging({
 
   const removeAttachmentByKeyboard = useCallback(
     (index: number): void => {
+      if (canMutate && !canMutate()) return
       const nextLen = attachments.length - 1
       // Prefer the next attachment (which slides into `index`); fall back to
       // the new last one when the removed item was itself last.
@@ -159,7 +198,7 @@ export function useAttachmentStaging({
         nextLen === 0 ? "input" : Math.min(index, nextLen - 1)
       removeAttachment(attachments[index]!.id)
     },
-    [attachments, removeAttachment],
+    [attachments, removeAttachment, canMutate],
   )
 
   useLayoutEffect(() => {
@@ -249,31 +288,42 @@ export function useAttachmentStaging({
     (payloads: AttachmentPayload[], mode: "append" | "set"): void => {
       const newFiles = toAttachedFiles(payloads)
       if (mode === "append") {
-        setAttachments((prev) => [...prev, ...newFiles])
+        setStage((previous) => ({
+          ...previous,
+          attachments: [...previous.attachments, ...newFiles],
+        }))
       } else {
         // "set" replaces the tray wholesale (e.g. ChatMessage re-seeding the
         // edit box from the message's saved attachments) -- any notice from
         // a previous, now-discarded staging session is no longer relevant.
-        setAttachments(newFiles)
-        setDownscaleNotice(false)
-        setGifConvertedNotice(false)
-        setSizeNotice(false)
+        setStage({
+          attachments: newFiles,
+          downscaleNotice: false,
+          gifConvertedNotice: false,
+          sizeNotice: false,
+        })
       }
     },
     [],
   )
 
-  const clearAttachments = useCallback(() => setAttachments([]), [])
+  const clearAttachments = useCallback(() => {
+    setStage((previous) => ({ ...previous, attachments: [] }))
+  }, [])
 
   const resetAll = useCallback(() => {
-    setAttachments([])
-    setDownscaleNotice(false)
-    setGifConvertedNotice(false)
-    setSizeNotice(false)
+    setStage({
+      attachments: [],
+      downscaleNotice: false,
+      gifConvertedNotice: false,
+      sizeNotice: false,
+    })
   }, [])
 
   return {
     attachments,
+    processing: processingState.count > 0,
+    isProcessing,
     downscaleNotice,
     gifConvertedNotice,
     sizeNotice,

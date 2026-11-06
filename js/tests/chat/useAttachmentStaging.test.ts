@@ -23,12 +23,122 @@ vi.mock("../../src/chat/attachments", async (orig) => {
 })
 
 import { useAttachmentStaging } from "../../src/chat/useAttachmentStaging"
+import { processFile } from "../../src/chat/attachments"
 
 function file(name: string, type = "image/png"): File {
   return new File(["x"], name, { type })
 }
 
 describe("useAttachmentStaging", () => {
+  it("retains an upload started before an unrelated transition locks the editor", async () => {
+    let editable = true
+    const { result } = renderHook(() =>
+      useAttachmentStaging({
+        uploadAccept: ["image/png"],
+        maxUploadSize: null,
+        enableUpload: true,
+        focusEditor: vi.fn(),
+        canMutate: () => editable,
+      }),
+    )
+    await act(async () => {
+      const work = result.current.addFiles([file("draft.png")])
+      editable = false
+      await work
+    })
+    expect(result.current.getPayloads()).toEqual([
+      {
+        mime: "image/png",
+        data_url: "data:image/png;base64,FAKE",
+        name: "draft.png",
+        size: 10,
+      },
+    ])
+    expect(result.current.isProcessing()).toBe(false)
+  })
+
+  it("holds submission through a batched failed conversion until the commit", async () => {
+    vi.mocked(processFile).mockRejectedValueOnce(new Error("read failed"))
+    const { result } = renderHook(() =>
+      useAttachmentStaging({
+        uploadAccept: ["image/png"],
+        maxUploadSize: null,
+        enableUpload: true,
+        focusEditor: vi.fn(),
+      }),
+    )
+    await act(async () => {
+      const work = result.current.addFiles([file("broken.png")])
+      expect(result.current.isProcessing()).toBe(true)
+      await work
+      expect(result.current.isProcessing()).toBe(true)
+    })
+    expect(result.current.processing).toBe(false)
+    expect(result.current.isProcessing()).toBe(false)
+    expect(result.current.getPayloads()).toEqual([])
+  })
+
+  it("publishes every concurrent result before allowing submission", async () => {
+    const { result } = renderHook(() =>
+      useAttachmentStaging({
+        uploadAccept: ["image/png"],
+        maxUploadSize: null,
+        enableUpload: true,
+        focusEditor: vi.fn(),
+      }),
+    )
+    await act(async () => {
+      const first = result.current.addFiles([file("first.png")])
+      const second = result.current.addFiles([file("second.png")])
+      expect(result.current.isProcessing()).toBe(true)
+      await Promise.all([first, second])
+      expect(result.current.isProcessing()).toBe(true)
+    })
+    expect(result.current.processing).toBe(false)
+    expect(result.current.isProcessing()).toBe(false)
+    expect(result.current.getPayloads()).toEqual([
+      {
+        mime: "image/png",
+        data_url: "data:image/png;base64,FAKE",
+        name: "first.png",
+        size: 10,
+      },
+      {
+        mime: "image/png",
+        data_url: "data:image/png;base64,FAKE",
+        name: "second.png",
+        size: 10,
+      },
+    ])
+  })
+
+  it("applies the size limit across concurrent additions", async () => {
+    const { result } = renderHook(() =>
+      useAttachmentStaging({
+        uploadAccept: ["image/png"],
+        maxUploadSize: 15,
+        enableUpload: true,
+        focusEditor: vi.fn(),
+      }),
+    )
+    await act(async () => {
+      await Promise.all([
+        result.current.addFiles([file("first.png")]),
+        result.current.addFiles([file("second.png")]),
+      ])
+    })
+    expect(result.current.getPayloads()).toEqual([
+      {
+        mime: "image/png",
+        data_url: "data:image/png;base64,FAKE",
+        name: "first.png",
+        size: 10,
+      },
+    ])
+    expect(result.current.sizeNotice).toBe(true)
+    expect(result.current.isProcessing()).toBe(false)
+  })
+
   it("clears stale notices when applyPayloads replaces the tray (mode: set)", async () => {
     const { result } = renderHook(() =>
       useAttachmentStaging({

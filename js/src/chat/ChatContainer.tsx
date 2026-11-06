@@ -153,7 +153,7 @@ export interface ChatContainerProps {
     index: number,
     content: string,
     attachments: AttachmentPayload[],
-  ) => void
+  ) => boolean | "retained" | void
   onNavigate?: (index: number, direction: "prev" | "next") => void
   onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
@@ -224,6 +224,10 @@ export const ChatContainer = forwardRef<
     [messages, streamingMessage],
   )
 
+  const isEditLocked = useCallback(
+    () => historyStore.getSnapshot().historyTransitionPending !== null,
+    [historyStore],
+  )
   const chatInputRef = useRef<ChatInputHandle>(null)
   const drawerCloseRef = useRef<HTMLButtonElement>(null)
   const drawerRevealRef = useRef<HTMLButtonElement>(null)
@@ -1104,6 +1108,8 @@ export const ChatContainer = forwardRef<
                     // when history is enabled -- without this gate the
                     // buttons would render but silently no-op on click.
                     onEdit={history.enabled ? onEdit : undefined}
+                    editLocked={history.historyTransitionPending !== null}
+                    isEditLocked={isEditLocked}
                     onNavigate={history.enabled ? onNavigate : undefined}
                     onRetry={history.enabled ? onRetry : undefined}
                     // Read-only hides edit/retry without touching the shared

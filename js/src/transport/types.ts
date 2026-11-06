@@ -333,6 +333,7 @@ export type ChatAction =
       exchange_id: string
     }
   | { type: "history_transition_complete"; requestId: string }
+  | { type: "history_transition_rejected"; requestId: string; reason: string }
 
 export type ShinyChatEnvelope = {
   id: string

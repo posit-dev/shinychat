@@ -10,6 +10,7 @@ from typing import (
     Awaitable,
     Callable,
     Iterator,
+    Literal,
 )
 
 from . import _history_plan, _utils
@@ -207,6 +208,37 @@ def _restore_step(step: str) -> Iterator[None]:
             setattr(error, _RESTORE_STEP_ATTR, step)
             _add_exception_note(error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}")
         raise
+
+
+_RESUBMIT_REJECTION_REASONS = {
+    "unavailable": "This message cannot be resubmitted right now. Please try again.",
+    "target": "This message can no longer be resubmitted.",
+    "parent": (
+        "This message cannot be resubmitted because its previous state "
+        "checkpoint is unavailable."
+    ),
+    "read_only": "This conversation is read-only, so this message cannot be resubmitted.",
+}
+
+
+class _ResubmitRejected(ValueError):
+    """An expected, pre-staging refusal with a fixed browser-safe reason."""
+
+    def __init__(
+        self,
+        reason: Literal["unavailable", "target", "parent", "read_only"],
+        diagnostic: str,
+    ) -> None:
+        super().__init__(diagnostic)
+        self.reason = _RESUBMIT_REJECTION_REASONS[reason]
+
+
+class _ResubmitIndexRejected(_ResubmitRejected, IndexError):
+    pass
+
+
+class _ResubmitReadOnlyRejected(_ResubmitRejected, RuntimeError):
+    pass
 
 
 # Resubmit refusals for a view-only record, worded by the reason that made it
@@ -972,31 +1004,44 @@ class HistoryController:
         """The validated resubmit target and its parent prefix id."""
         target = record.nodes.get(exchange_id)
         if target is None:
-            raise ValueError(f"Unknown exchange id {exchange_id!r}")
+            raise _ResubmitRejected(
+                "target", f"Unknown exchange id {exchange_id!r}"
+            )
         if target.input is None:
-            raise ValueError(
-                f"Exchange {exchange_id!r} has no user input to resubmit."
+            raise _ResubmitRejected(
+                "target",
+                f"Exchange {exchange_id!r} has no user input to resubmit.",
             )
         if exchange_id not in record.path_node_ids():
-            raise ValueError(
-                f"Exchange {exchange_id!r} is not on the active path."
+            raise _ResubmitRejected(
+                "target", f"Exchange {exchange_id!r} is not on the active path."
             )
         if target.parent_id is None:
-            raise ValueError(
-                f"Exchange {exchange_id!r} has no parent prefix to resubmit."
+            raise _ResubmitRejected(
+                "parent",
+                f"Exchange {exchange_id!r} has no parent prefix to resubmit.",
             )
         if kind == "retry":
             if target.status not in _RETRYABLE_STATUSES:
-                raise ValueError(
-                    "Only interrupted or failed exchanges can be retried."
+                raise _ResubmitRejected(
+                    "target",
+                    "Only interrupted or failed exchanges can be retried.",
                 )
         elif kind == "regenerate":
             if target.status != "ok":
-                raise ValueError("Only completed exchanges can be regenerated.")
+                raise _ResubmitRejected(
+                    "target", "Only completed exchanges can be regenerated."
+                )
         elif kind != "edit":
-            raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
+            raise _ResubmitRejected(
+                "target", f"Unknown exchange resubmit kind {kind!r}."
+            )
         # The accepted input is causal data, not the rewind destination.
-        record.require_checkpoint(target.parent_id)
+        parent = record.nodes.get(target.parent_id)
+        if parent is None or not parent.is_checkpoint:
+            raise _ResubmitRejected(
+                "parent", "The requested position is not a valid checkpoint."
+            )
         return target, target.parent_id
 
     @staticmethod
@@ -1045,7 +1090,9 @@ class HistoryController:
         recorder = self._exchange_recorder
         record = recorder.record
         if record is None:
-            raise RuntimeError("No exchange-tree conversation is active")
+            raise _ResubmitRejected(
+                "unavailable", "No exchange-tree conversation is active"
+            )
         resolvable = (
             recorder.read_only
             and recorder.read_only_reason in _RESOLVABLE_RESUBMIT_REASONS
@@ -1066,11 +1113,12 @@ class HistoryController:
             # An explicit resubmit may revalidate an app failure, or a
             # selected not-sent position's unavailable model, by restoring
             # its valid parent without close-capturing poisoned live state.
-            raise RuntimeError(
+            raise _ResubmitReadOnlyRejected(
+                "read_only",
                 _READ_ONLY_RESUBMIT_MESSAGES.get(
                     recorder.read_only_reason or "model_unavailable",
                     "Cannot resubmit an exchange in a read-only conversation.",
-                )
+                ),
             )
 
         target, parent_id = self._validate_resubmit_target(
@@ -1546,8 +1594,15 @@ class HistoryController:
             raise ValueError("Exchange-tree resubmits require a request ID.")
         record = recorder.record
         if record is None:
-            return
-        exchange_id = record.exchange_id_for_user_message_index(message_index)
+            raise _ResubmitRejected(
+                "unavailable", "No exchange-tree conversation is active"
+            )
+        try:
+            exchange_id = record.exchange_id_for_user_message_index(
+                message_index
+            )
+        except IndexError as error:
+            raise _ResubmitIndexRejected("target", str(error)) from error
         await self.resubmit(
             exchange_id,
             kind=kind,
@@ -1671,10 +1726,17 @@ class HistoryController:
         recorder = self._exchange_recorder
         record = recorder.record
         if record is None:
-            return
+            raise _ResubmitRejected(
+                "unavailable", "No exchange-tree conversation is active"
+            )
         if request_id is None:
             raise ValueError("Exchange-tree edits require a request ID.")
-        exchange_id = record.exchange_id_for_user_message_index(message_index)
+        try:
+            exchange_id = record.exchange_id_for_user_message_index(
+                message_index
+            )
+        except IndexError as error:
+            raise _ResubmitIndexRejected("target", str(error)) from error
         replacement = self._replacement_resubmit_input(content, attachments)
         await self.resubmit(
             exchange_id,

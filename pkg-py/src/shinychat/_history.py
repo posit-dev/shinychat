@@ -17,6 +17,7 @@ from ._history_client import as_turns_adapter
 from ._history_controller import (
     HistoryController,
     _restore_failure_was_notified,
+    _ResubmitRejected,
 )
 from ._history_store import (
     ConversationPartition,
@@ -801,6 +802,7 @@ class ChatHistory:
             action: Callable[[Any, str | None], Awaitable[None]],
             *,
             require_admission: bool = True,
+            reject_resubmit: bool = False,
         ) -> None:
             """The one skeleton shared by the transition input effects.
 
@@ -815,10 +817,41 @@ class ChatHistory:
             request_id = _history_transition_request_id(payload)
             try:
                 if require_admission and not self._history_action_admitted():
+                    if reject_resubmit:
+                        raise _ResubmitRejected(
+                            "unavailable", "History is not ready"
+                        )
                     return
                 if controller.partition is None:
+                    if reject_resubmit:
+                        raise _ResubmitRejected(
+                            "unavailable", "History is not initialized"
+                        )
                     return
                 await action(payload, request_id)
+            except _ResubmitRejected as e:
+                if not reject_resubmit:
+                    await notify_error(error_prefix, e)
+                else:
+                    import warnings
+
+                    from shiny import ui as shiny_ui
+
+                    warnings.warn(f"{error_prefix}: {e}", stacklevel=1)
+                    if request_id is not None:
+                        try:
+                            await chat._send_action(
+                                {
+                                    "type": "history_transition_rejected",
+                                    "requestId": request_id,
+                                    "reason": e.reason,
+                                }
+                            )
+                        except Exception:
+                            # The completion remains independent of delivery.
+                            pass
+                    with session_context(session):
+                        shiny_ui.notification_show(e.reason, type="error")
             except Exception as e:
                 await notify_error(error_prefix, e)
             finally:
@@ -1019,13 +1052,19 @@ class ChatHistory:
 
         async def _apply_edit(payload: Any, request_id: str | None) -> None:
             if not isinstance(payload, dict):
-                raise TypeError("Edited message payload must be an object.")
+                raise _ResubmitRejected(
+                    "target", "Edited message payload must be an object."
+                )
             index = payload.get("index")
             content = payload.get("content")
-            if not isinstance(index, int):
-                raise TypeError("Edited message index must be an integer.")
+            if not isinstance(index, int) or isinstance(index, bool):
+                raise _ResubmitRejected(
+                    "target", "Edited message index must be an integer."
+                )
             if not isinstance(content, str):
-                raise TypeError("Edited message content must be a string.")
+                raise _ResubmitRejected(
+                    "target", "Edited message content must be a string."
+                )
             await controller.handle_edit(
                 index,
                 content,
@@ -1040,6 +1079,7 @@ class ChatHistory:
                 ids.message_edit,
                 "Could not edit message",
                 _apply_edit,
+                reject_resubmit=True,
             )
 
         async def _apply_navigate(payload: Any, request_id: str | None) -> None:
@@ -1068,13 +1108,19 @@ class ChatHistory:
 
         async def _apply_resubmit(payload: Any, request_id: str | None) -> None:
             if not isinstance(payload, dict):
-                raise TypeError("Resubmit payload must be an object.")
+                raise _ResubmitRejected(
+                    "target", "Resubmit payload must be an object."
+                )
             index = payload.get("index")
             kind = payload.get("kind")
-            if not isinstance(index, int):
-                raise TypeError("Resubmit message index must be an integer.")
+            if not isinstance(index, int) or isinstance(index, bool):
+                raise _ResubmitRejected(
+                    "target", "Resubmit message index must be an integer."
+                )
             if not isinstance(kind, str):
-                raise TypeError("Resubmit kind must be a string.")
+                raise _ResubmitRejected(
+                    "target", "Resubmit kind must be a string."
+                )
             await controller.handle_resubmit(index, kind, request_id=request_id)
 
         @reactive.effect
@@ -1084,6 +1130,7 @@ class ChatHistory:
                 ids.message_resubmit,
                 "Could not retry message",
                 _apply_resubmit,
+                reject_resubmit=True,
             )
 
         def _on_session_end() -> None:

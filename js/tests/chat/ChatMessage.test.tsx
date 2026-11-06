@@ -168,6 +168,52 @@ describe("ChatMessage parent checkpoint validity", () => {
     ).toBeNull()
   })
 
+  it("retains a held edit when its parent becomes invalid, then shows the error after closing", () => {
+    const onEdit = vi.fn(() => "retained" as const)
+    const message = userMessage({
+      exchange: { status: "ok", retryable: false, parent_editable: true },
+    })
+    const { rerender } = render(
+      <ChatMessage index={0} message={message} onEdit={onEdit} isEditing />,
+    )
+    const editor = screen.getByRole("textbox", { name: "Chat message" })
+    fireEvent.change(editor, { target: { value: "draft" } })
+    fireEvent.keyDown(editor, { key: "Enter" })
+    expect(onEdit).toHaveBeenCalledWith(0, "draft", [])
+
+    const invalidMessage = {
+      ...message,
+      exchange: {
+        status: "error" as const,
+        retryable: false,
+        parent_editable: false,
+        error_message: "The response could not be completed.",
+      },
+    }
+    rerender(
+      <ChatMessage
+        index={0}
+        message={invalidMessage}
+        onEdit={onEdit}
+        isEditing
+        editLocked
+      />,
+    )
+    expect(editor).toHaveValue("draft")
+    expect(editor).toHaveAttribute("readonly")
+    expect(screen.queryByText(invalidMessage.exchange.error_message)).toBeNull()
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+
+    rerender(<ChatMessage index={0} message={invalidMessage} onEdit={onEdit} />)
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+    expect(screen.getByText(invalidMessage.exchange.error_message)).toBeTruthy()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
+  })
+
   it("preserves Edit for exchange metadata from an older server", () => {
     render(
       <ChatMessage
@@ -2095,6 +2141,27 @@ describe("ChatMessage readOnly", () => {
     expect(next).toBeEnabled()
     fireEvent.click(next)
     expect(onNavigate).toHaveBeenCalledWith(0, "next")
+  })
+
+  it("does not reopen an unsent read-only edit during an unrelated transition", () => {
+    const props = {
+      index: 0,
+      message: userMessage({ siblings: { index: 0, total: 2 } }),
+      onEdit: vi.fn(),
+      onNavigate: vi.fn(),
+      isEditing: true,
+    }
+    const { rerender } = render(<ChatMessage {...props} />)
+    fireEvent.change(screen.getByRole("textbox", { name: "Chat message" }), {
+      target: { value: "unsent draft" },
+    })
+    rerender(<ChatMessage {...props} readOnly />)
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+
+    rerender(<ChatMessage {...props} readOnly editLocked />)
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Save and resend" })).toBeNull()
+    expect(props.onEdit).not.toHaveBeenCalled()
   })
 
   it("hides an in-progress editor when the conversation becomes read-only", () => {

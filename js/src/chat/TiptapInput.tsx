@@ -44,6 +44,8 @@ export interface TiptapInputProps {
    * still apply.
    */
   locked?: boolean
+  /** Live guard for the interval before a pending-state render commits. */
+  isLocked?: () => boolean
 }
 
 // Transactions from the imperative handle carry this meta and bypass `locked`.
@@ -117,6 +119,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
       submitKey,
       canSubmitEmpty,
       locked = false,
+      isLocked,
     },
     ref,
   ) {
@@ -133,6 +136,8 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
     canSubmitEmptyRef.current = canSubmitEmpty
     const lockedRef = useRef(locked)
     lockedRef.current = locked
+    const isLockedRef = useRef(isLocked)
+    isLockedRef.current = isLocked
     const resetRef = useRef(reset)
     resetRef.current = reset
     const editorInstanceRef = useRef<Editor | null>(null)
@@ -150,7 +155,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
               new Plugin({
                 key: new PluginKey("composerLock"),
                 filterTransaction: (tr) =>
-                  !lockedRef.current ||
+                  !(lockedRef.current || isLockedRef.current?.()) ||
                   !tr.docChanged ||
                   tr.getMeta(PROGRAMMATIC_META) === true,
               }),

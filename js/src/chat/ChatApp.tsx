@@ -216,6 +216,9 @@ export function ChatApp({
   }, [elementId, historyStore, transport])
 
   const containerRef = useRef<ChatContainerHandle>(null)
+  const pendingEditRef = useRef<{ requestId: string; index: number } | null>(
+    null,
+  )
   const messagesRef = useRef(state.messages)
   useLayoutEffect(() => {
     messagesRef.current = state.messages
@@ -390,6 +393,9 @@ export function ChatApp({
         if (action.enabled) {
           setCurrentConversationId(elementId, action.active_id)
         }
+        if (historyStore.getSnapshot().historyTransitionPending === null) {
+          pendingEditRef.current = null
+        }
         if (
           siblingNavigationPendingRef.current &&
           historyStore.getSnapshot().historyTransitionPending === null
@@ -400,8 +406,12 @@ export function ChatApp({
         }
         return
       }
-      if (action.type === "history_transition_complete") {
+      if (
+        action.type === "history_transition_complete" ||
+        action.type === "history_transition_rejected"
+      ) {
         if (historyStore.completeHistoryTransition(action.requestId)) {
+          pendingEditRef.current = null
           if (siblingNavigationPendingRef.current) {
             siblingNavigationPendingRef.current = false
             setSiblingNavigationPending(false)
@@ -422,7 +432,9 @@ export function ChatApp({
           action.index < 0 ||
           messagesRef.current[action.index]?.role !== "user" ||
           typeof action.content !== "string" ||
-          !Array.isArray(action.attachments)
+          !Array.isArray(action.attachments) ||
+          (pendingEditRef.current?.requestId === action.requestId &&
+            pendingEditRef.current.index !== action.index)
         ) {
           console.warn(
             "[shinychat] Malformed history edit projection; dropping.",
@@ -430,6 +442,7 @@ export function ChatApp({
           return
         }
         if (!historyStore.acceptEditProjection(action.requestId)) return
+        pendingEditRef.current = null
         dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
         dispatch({
           type: "INPUT_SENT",
@@ -644,19 +657,24 @@ export function ChatApp({
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
-        return
+        return false
       const requestId = historyStore.beginEditTransition()
       if (requestId === null) {
+        // A v2 edit must never fall back to an uncorrelated legacy send.
+        if (historyStore.getSnapshot().transitionProtocol === "completion-v2")
+          return false
         transport.sendMessageEdit(elementId, index, content, attachments)
-      } else {
-        transport.sendMessageEdit(
-          elementId,
-          index,
-          content,
-          attachments,
-          requestId,
-        )
+        return true
       }
+      pendingEditRef.current = { requestId, index }
+      transport.sendMessageEdit(
+        elementId,
+        index,
+        content,
+        attachments,
+        requestId,
+      )
+      return "retained" as const
     },
     [transport, elementId, historyStore],
   )

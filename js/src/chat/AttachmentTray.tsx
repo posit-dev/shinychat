@@ -16,6 +16,7 @@ export interface AttachmentTrayProps {
   enableUpload?: boolean
   disabled?: boolean
   locked?: boolean
+  isLocked?: () => boolean
 }
 
 export const AttachmentTray = memo(function AttachmentTray({
@@ -25,6 +26,7 @@ export const AttachmentTray = memo(function AttachmentTray({
   enableUpload,
   disabled,
   locked = false,
+  isLocked,
 }: AttachmentTrayProps) {
   const {
     attachments,
@@ -52,7 +54,7 @@ export const AttachmentTray = memo(function AttachmentTray({
               index={i}
               locked={locked}
               onRemove={() => {
-                if (!locked) removeAttachmentByKeyboard(i)
+                if (!locked && !isLocked?.()) removeAttachmentByKeyboard(i)
               }}
               registerRef={(el) => {
                 attachmentRefs.current[i] = el
@@ -82,7 +84,10 @@ export const AttachmentTray = memo(function AttachmentTray({
             multiple
             accept={acceptAttribute(uploadAccept)}
             style={{ display: "none" }}
-            onChange={onFilePick}
+            disabled={locked}
+            onChange={(event) => {
+              if (!locked && !isLocked?.()) onFilePick(event)
+            }}
             data-shiny-no-bind-input
           />
           <button
@@ -90,8 +95,10 @@ export const AttachmentTray = memo(function AttachmentTray({
             className="shiny-chat-btn-attach"
             title="Attach file"
             aria-label="Attach file"
-            disabled={disabled}
-            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled || locked}
+            onClick={() => {
+              if (!isLocked?.()) fileInputRef.current?.click()
+            }}
             dangerouslySetInnerHTML={{ __html: plusThin }}
           />
         </>

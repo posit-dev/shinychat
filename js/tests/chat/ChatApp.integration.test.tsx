@@ -596,8 +596,13 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       )
       warn.mockRestore()
       expect(transport.sendInput).not.toHaveBeenCalled()
-      expect(screen.getByText("original")).toBeTruthy()
-      expect(screen.queryByText("replacement")).toBeNull()
+      expect(screen.getByPlaceholderText("Edit message")).toHaveValue(
+        "replacement",
+      )
+      expect(screen.getByPlaceholderText("Edit message")).toHaveAttribute(
+        "readonly",
+      )
+      expect(screen.queryByText("original")).toBeNull()
       expect(
         screen.getByRole("button", { name: "Send message" }),
       ).toBeDisabled()
@@ -706,7 +711,12 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     })
     expect(store.getSnapshot().historyTransitionPending).toBe(requestId)
     expect(store.getSnapshot().busy).toBe(false)
-    expect(screen.getByText("selected branch")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Edit message")).toHaveValue(
+      "replacement",
+    )
+    expect(screen.getByPlaceholderText("Edit message")).toHaveAttribute(
+      "readonly",
+    )
     expect(screen.getByText("selected reply")).toBeTruthy()
     await act(async () => {
       transport.fire("test-chat", {
@@ -727,7 +737,12 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     expect(store.getSnapshot().historyTransitionPending).toBeNull()
     expect(store.getSnapshot().busy).toBe(false)
     expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled()
-    expect(screen.getByText("selected branch")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Edit message")).toHaveValue(
+      "replacement",
+    )
+    expect(screen.getByPlaceholderText("Edit message")).not.toHaveAttribute(
+      "readonly",
+    )
     expect(screen.getByText("selected reply")).toBeTruthy()
     expect(screen.queryByText("late replacement")).toBeNull()
     expect(transport.sendInput).not.toHaveBeenCalled()
@@ -831,9 +846,8 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     expect(
       screen.getByRole("button", { name: /send message/i }),
     ).toHaveProperty("disabled", true)
-    expect(
-      screen.getByRole("button", { name: /next version/i }),
-    ).toHaveProperty("disabled", true)
+    expect(editInput).toHaveValue("replacement")
+    expect(editInput).toHaveAttribute("readonly")
     fireEvent.click(
       screen.getByRole("button", { name: /conversation history/i }),
     )
@@ -852,7 +866,8 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       })
     })
     expect(transport.sendInput).not.toHaveBeenCalled()
-    expect(screen.getByText("replace me")).toBeTruthy()
+    expect(editInput).toHaveValue("replacement")
+    expect(editInput).toHaveAttribute("readonly")
 
     await act(async () => {
       transport.fire("test-chat", {
@@ -1011,16 +1026,12 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     })
 
     expect(transport.sendInput).not.toHaveBeenCalled()
-    expect(screen.getByText("replace me")).toBeTruthy()
+    expect(editInput).toHaveValue("v2 replacement")
+    expect(editInput).not.toHaveAttribute("readonly")
 
-    // The marker was cleared with the capability change, so the v1 edit path
-    // is immediately usable and must not carry the obsolete request ID.
-    fireEvent.click(
-      targetUser.querySelector(".shiny-chat-edit-btn") as HTMLElement,
-    )
-    const legacyEditInput = targetUser.querySelector(
-      ".shiny-chat-edit-box textarea",
-    ) as HTMLTextAreaElement
+    // The marker was cleared with the capability change; the same draft can
+    // now use the v1 edit path without carrying the obsolete request ID.
+    const legacyEditInput = editInput
     fireEvent.change(legacyEditInput, {
       target: { value: "v1 replacement" },
     })
@@ -1088,7 +1099,8 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       })
     })
     expect(transport.sendInput).not.toHaveBeenCalled()
-    expect(screen.getByText("replace me")).toBeTruthy()
+    expect(editInput).toHaveValue("replacement")
+    expect(editInput).toHaveAttribute("readonly")
 
     await act(async () => {
       transport.fire("test-chat", {
@@ -1243,6 +1255,10 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       })
     })
 
+    // Completion without projection retains the draft; close it explicitly
+    // before navigating the original message.
+    expect(editInput).toHaveValue("edited restored message")
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
     fireEvent.click(screen.getByRole("button", { name: "Next version" }))
     expect(transport.sendMessageNavigate).toHaveBeenCalledWith(
       "test-chat",
