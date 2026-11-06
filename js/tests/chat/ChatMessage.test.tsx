@@ -31,23 +31,59 @@ const imageAttachment = (src: string, mime = "image/png") => ({
 
 describe("ChatMessage parent checkpoint validity", () => {
   it.each(["pending", "ok", "error", "cancelled"] as const)(
-    "hides Edit for an invalid parent regardless of %s outcome",
-    (status) => {
+    "disables Edit with a tooltip for an invalid parent regardless of %s outcome",
+    async (status) => {
       const exchange = { status, retryable: false, parent_editable: false }
-      const { container } = render(
+      const onStartEdit = vi.fn()
+      render(
         <ChatMessage
           index={0}
           message={userMessage({ exchange })}
           onEdit={vi.fn()}
-          onStartEdit={vi.fn()}
+          onStartEdit={onStartEdit}
         />,
       )
-      expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
-      expect(container.querySelector(".shiny-chat-message-footer")).toBeNull()
+      const edit = screen.getByRole("button", { name: "Edit message" })
+      expect(edit.getAttribute("aria-disabled")).toBe("true")
+      expect(screen.queryByRole("tooltip")).toBeNull()
+
+      fireEvent.focus(edit)
+      const tooltip = await screen.findByRole("tooltip")
+      expect(tooltip.textContent).toBe("This message can't be edited.")
+      expect(edit.getAttribute("aria-describedby")).toBe(tooltip.id)
+
+      fireEvent.click(edit)
+      expect(onStartEdit).not.toHaveBeenCalled()
     },
   )
 
-  it("keeps the response error visible when its invalid parent hides both actions", () => {
+  it("does not offer Edit for an invalid parent when busy or read-only", () => {
+    const exchange = {
+      status: "ok" as const,
+      retryable: false,
+      parent_editable: false,
+    }
+    const { rerender } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        disabled
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    rerender(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        readOnly
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+  })
+
+  it("keeps the response error visible beside the disabled Edit", () => {
     const exchange = {
       status: "error" as const,
       retryable: false,
@@ -63,7 +99,11 @@ describe("ChatMessage parent checkpoint validity", () => {
       />,
     )
     expect(screen.getByText(exchange.error_message)).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
     expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
   })
 
@@ -88,7 +128,7 @@ describe("ChatMessage parent checkpoint validity", () => {
     expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
   })
 
-  it("updates Edit visibility without losing sibling navigation", () => {
+  it("updates Edit availability without losing sibling navigation", () => {
     const onNavigate = vi.fn()
     const props = {
       index: 0,
@@ -105,7 +145,11 @@ describe("ChatMessage parent checkpoint validity", () => {
       parent_editable: false,
     }
     rerender(<ChatMessage {...props} message={{ ...message, exchange }} />)
-    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
     fireEvent.click(screen.getByRole("button", { name: "Previous version" }))
     expect(onNavigate).toHaveBeenCalledWith(0, "prev")
     rerender(
@@ -117,7 +161,11 @@ describe("ChatMessage parent checkpoint validity", () => {
         }}
       />,
     )
-    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull()
   })
 
   it("preserves Edit for exchange metadata from an older server", () => {
