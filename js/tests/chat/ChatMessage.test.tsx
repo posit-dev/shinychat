@@ -368,7 +368,7 @@ describe("ChatMessage attachments", () => {
       <ChatToolContext.Provider
         value={{
           supersededRequests: new Set(["req-1"]),
-          requestDefinitionIcons: new Map(),
+          requestDefinitions: new Map(),
         }}
       >
         <ChatMessage index={0} message={message} />
@@ -424,7 +424,7 @@ describe("ChatMessage attachments", () => {
       <ChatToolContext.Provider
         value={{
           supersededRequests: new Set(["req-1"]),
-          requestDefinitionIcons: new Map(),
+          requestDefinitions: new Map(),
         }}
       >
         <ChatMessage index={0} message={message} />
@@ -433,6 +433,179 @@ describe("ChatMessage attachments", () => {
     expect(container.textContent).toContain("email")
     expect(container.textContent).not.toContain("search")
     expect(container.textContent).not.toContain("×2")
+  })
+
+  it("keeps the definition title as a settled multi-call group's header", () => {
+    // Two requests carry the tool's definition title; their results carry
+    // per-call display titles. Once the results supersede the requests, the
+    // header must stay "Checking weather" and both children keep their result
+    // titles -- instead of the header adopting the first result title and the
+    // duplicate first child degrading to the bare tool name (issue #456).
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "tool",
+          groups: [
+            {
+              key: "tool:get_weather",
+              toolName: "get_weather",
+              title: "Checking weather",
+              titleSettled: false,
+              count: 4,
+              segments: [
+                {
+                  toolName: "get_weather",
+                  title: "Checking weather",
+                  count: 4,
+                  settled: false,
+                },
+              ],
+              calls: [
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "running",
+                  definitionTitle: "Checking weather",
+                  arguments: '{"city":"Duluth"}',
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "running",
+                  definitionTitle: "Checking weather",
+                  arguments: '{"city":"Tokyo"}',
+                },
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Checked weather in Duluth",
+                  value: "72F and sunny in Duluth",
+                  valueType: "text",
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Checked weather in Tokyo",
+                  value: "72F and sunny in Tokyo",
+                  valueType: "text",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{
+          supersededRequests: new Set(["call_1", "call_2"]),
+          requestDefinitions: new Map([
+            ["call_1", { title: "Checking weather" }],
+            ["call_2", { title: "Checking weather" }],
+          ]),
+        }}
+      >
+        <ChatMessage index={0} message={message} />
+      </ChatToolContext.Provider>,
+    )
+    expect(container.textContent).toContain("Checking weather")
+    expect(container.textContent).toContain("×2")
+    expect(container.textContent).toContain("Checked weather in Duluth")
+    expect(container.textContent).toContain("Checked weather in Tokyo")
+    expect(container.textContent).not.toContain("get_weather")
+  })
+
+  it("keeps differing result titles out of a settled multi-call group's header", () => {
+    // No definition title: the requests carry nothing to inherit. The header
+    // must not adopt the first settled call's result title (which would also
+    // suppress that call's row label as a duplicate); with no title every
+    // call shares, the header falls back to the tool name and each row keeps
+    // its own result title.
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "tool",
+          groups: [
+            {
+              key: "tool:get_weather",
+              toolName: "get_weather",
+              titleSettled: false,
+              count: 4,
+              segments: [{ toolName: "get_weather", count: 4, settled: false }],
+              calls: [
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "running",
+                  arguments: '{"city":"Duluth"}',
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "running",
+                  arguments: '{"city":"Tokyo"}',
+                },
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Got weather for Duluth",
+                  value: "72F and sunny in Duluth",
+                  valueType: "text",
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Got weather for Tokyo",
+                  value: "72F and sunny in Tokyo",
+                  valueType: "text",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{
+          supersededRequests: new Set(["call_1", "call_2"]),
+          requestDefinitions: new Map(),
+        }}
+      >
+        <ChatMessage index={0} message={message} />
+      </ChatToolContext.Provider>,
+    )
+    const header = container.querySelector(".shiny-chat-tool-group__titlewrap")
+    expect(header?.textContent).toContain("Used ")
+    expect(header?.textContent).toContain("get_weather")
+    expect(header?.textContent).toContain("×2")
+    expect(header?.textContent).not.toContain("Got weather for Duluth")
+    const labels = [
+      ...container.querySelectorAll(".shiny-chat-tool-call-row__label"),
+    ].map((el) => el.textContent)
+    expect(labels).toEqual(["Got weather for Duluth", "Got weather for Tokyo"])
   })
 
   it('removes the icon entirely when the assistant icon is "" (icon_assistant=False)', () => {

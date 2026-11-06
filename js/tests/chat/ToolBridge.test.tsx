@@ -261,6 +261,88 @@ describe("Tool component bridge rendering", () => {
     ).toBeTruthy()
   })
 
+  it("carries a request definition title into results in a later message", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              type: "tool_request",
+              version: 1,
+              request_id: "weather-1",
+              tool_name: "get_weather",
+              title: "Checking weather",
+              arguments: '{"city":"Duluth"}',
+            },
+            {
+              type: "tool_request",
+              version: 1,
+              request_id: "weather-2",
+              tool_name: "get_weather",
+              title: "Checking weather",
+              arguments: '{"city":"Tokyo"}',
+            },
+          ],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              type: "tool_result",
+              version: 1,
+              request_id: "weather-1",
+              tool_name: "get_weather",
+              status: "success",
+              value: "72F and sunny in Duluth",
+              value_type: "text",
+              title: "Checked weather in Duluth",
+            },
+            {
+              type: "tool_result",
+              version: 1,
+              request_id: "weather-2",
+              tool_name: "get_weather",
+              status: "success",
+              value: "72F and sunny in Tokyo",
+              value_type: "text",
+              title: "Checked weather in Tokyo",
+            },
+          ],
+        },
+      })
+    })
+
+    // The settled group's header keeps the requests' definition title...
+    const header = document.querySelector(".shiny-chat-tool-group__titlewrap")
+    expect(header?.textContent).toContain("Checking weather")
+    expect(header?.textContent).toContain("×2")
+    // ...while each row keeps its own result title.
+    const labels = [
+      ...document.querySelectorAll(".shiny-chat-tool-call-row__label"),
+    ].map((el) => el.textContent)
+    expect(labels).toEqual([
+      "Checked weather in Duluth",
+      "Checked weather in Tokyo",
+    ])
+  })
+
   it("keeps an explicit result icon while retaining request identity", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()

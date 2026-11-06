@@ -31,7 +31,9 @@ the past tense (for example, \code{"Got weather"}).}
 be a character string or HTML content (e.g. from \link[htmltools:tags]{htmltools::tags}).}
 
 \item{html}{Custom HTML content (to use in place of the default result
-content in the drill-down card).}
+content in the drill-down card). Code blocks tagged with a language class
+(\verb{<pre><code class="language-r">}) are syntax-highlighted; add a
+\code{nohighlight} class to a code block to opt out.}
 
 \item{markdown}{Custom Markdown string (to use in place of the default
 result content in the drill-down card).}
