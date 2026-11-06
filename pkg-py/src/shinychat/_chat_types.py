@@ -468,12 +468,6 @@ class HistoryTransitionCompleteAction(TypedDict):
     requestId: str
 
 
-class HistoryTransitionRejectedAction(TypedDict):
-    type: Literal["history_transition_rejected"]
-    requestId: str
-    reason: str
-
-
 class HistoryEditProjectionAction(TypedDict):
     type: Literal["history_edit_projection"]
     requestId: str
@@ -492,8 +486,6 @@ class UpdateSiblingsAction(TypedDict):
 class ExchangeMetadata(TypedDict):
     status: Literal["pending", "ok", "error", "cancelled"]
     retryable: bool
-    # Parent checkpoint validity, independent of outcome or Retry eligibility.
-    parent_editable: bool
     error_message: NotRequired[str]
     # True when this exchange failed before acceptance ("message not sent")
     # rather than in the provider: the row offers Retry/Edit while ordinary
@@ -533,7 +525,6 @@ ChatAction = Union[
     HistoryUpdateAction,
     HistoryNavigateAction,
     HistoryTransitionCompleteAction,
-    HistoryTransitionRejectedAction,
     HistoryEditProjectionAction,
     UpdateSiblingsAction,
     UpdateExchangeMetadataAction,

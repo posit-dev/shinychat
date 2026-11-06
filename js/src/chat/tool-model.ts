@@ -43,6 +43,7 @@ export interface ToolCallItem {
   valueType?: string
   requestCall?: string
   showRequest?: boolean
+  requestCollapsed?: boolean
   fullScreen?: boolean
   openStyle?: ToolResultOpenStyle
   expanded?: boolean
@@ -267,7 +268,6 @@ export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
   if (block.show_request !== undefined) call.showRequest = block.show_request
   if (block.full_screen !== undefined) call.fullScreen = block.full_screen
   if (block.open_style !== undefined) call.openStyle = block.open_style
-  if (block.expanded !== undefined) call.expanded = block.expanded
   if (block.custom_display !== undefined)
     call.customDisplay = block.custom_display
   if (block.footer !== undefined) call.footer = block.footer
@@ -275,9 +275,37 @@ export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
   if (block.details_type !== undefined) call.detailsType = block.details_type
   if (block.details_summary !== undefined)
     call.detailsSummary = block.details_summary
-  if (block.details_open !== undefined) call.detailsOpen = block.details_open
   if (block.grouping !== undefined) call.grouping = block.grouping
+
+  // Content-type open policy: a card with a visual showing arrives open,
+  // its request display collapsed, its details slot closed; explicit
+  // settings always win. Resolved here, where the rendered content is at
+  // hand -- the server ships explicit settings only.
+  const hasImage = toolResultHasImage(block)
+  call.expanded = block.expanded ?? hasImage
+  call.requestCollapsed = hasImage
+  call.detailsOpen = block.details_open ?? !hasImage
   return call
+}
+
+function toolResultHasImage(block: ToolResultBlock): boolean {
+  const value = block.value
+  if (typeof value !== "string") return false
+  switch (block.value_type) {
+    case "content_extra":
+      try {
+        const items = JSON.parse(value) as Array<{ type?: unknown }>
+        return items.some((item) => item.type === "image")
+      } catch {
+        return false
+      }
+    case "html":
+      return /<img[\s>]/i.test(value)
+    case "markdown":
+      return /<img[\s>]|!\[[^\]]*\]\(/i.test(value)
+    default:
+      return false
+  }
 }
 
 /** Convert a structured wire block into a render-ready ToolLoopBlock (one block → one loop → one call). */

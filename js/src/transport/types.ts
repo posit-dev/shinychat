@@ -79,6 +79,7 @@ export type ToolResultBlock = {
   value_preview?: string
   grouping?: StructuredBlockGrouping
   show_request?: boolean
+  /** Explicit author setting; unset lets the client's content policy decide */
   expanded?: boolean
   open_style?: "minimal" | "framed"
   full_screen?: boolean
@@ -92,6 +93,7 @@ export type ToolResultBlock = {
   details_type?: "html" | "markdown"
   /** text → escaped */
   details_summary?: string
+  /** Explicit author setting; unset lets the client's content policy decide */
   details_open?: boolean
 }
 

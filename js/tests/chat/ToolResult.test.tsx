@@ -94,6 +94,43 @@ describe("ToolResult", () => {
     expect(container.textContent).toContain("my_tool(x = 1)")
   })
 
+  it("collapses even a short request display when requestCollapsed is set", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value="42"
+        valueType="text"
+        requestCall="send(r = 'plot(1:3)')"
+        showRequest={true}
+        requestCollapsed={true}
+        initialExpanded={true}
+      />,
+    )
+    const request = container.querySelector(".shiny-tool-result__request")
+    const details = request!.querySelector("details") as HTMLDetailsElement
+    expect(details).toBeTruthy()
+    expect(details.open).toBe(false)
+    expect(details.querySelector("summary")?.textContent).toBe("Tool call")
+  })
+
+  it("keeps short request displays inline without requestCollapsed", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value="42"
+        valueType="text"
+        requestCall="send(r = 'plot(1:3)')"
+        showRequest={true}
+        initialExpanded={true}
+      />,
+    )
+    const request = container.querySelector(".shiny-tool-result__request")
+    expect(request!.querySelector("details")).toBeNull()
+    expect(request!.querySelector("strong")?.textContent).toBe("Tool call")
+  })
+
   it("renders the details slot as a collapsible disclosure above the result body", () => {
     const { container } = render(
       <ToolResult

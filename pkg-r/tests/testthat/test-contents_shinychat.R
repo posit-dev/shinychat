@@ -311,7 +311,7 @@ test_that("ContentToolResult with custom text display", {
   expect_equal(res$value, "Success!")
   expect_equal(res$value_type, "text")
   expect_true(res$show_request)
-  expect_false(res$expanded)
+  expect_null(res$expanded)
   expect_false(res$full_screen)
 })
 
@@ -497,6 +497,7 @@ test_that("tool_result_display details slot reaches the tool card", {
   # HTML content leaves the flavor at the client's default ("html").
   expect_null(block$details_type)
   expect_identical(block$details_summary, "Code")
+  # No explicit open: unset on the wire, the client's policy decides.
   expect_null(block$details_open)
 
   open <- tool_result_display(
@@ -575,6 +576,50 @@ test_that("details validation warns and drops malformed values", {
     "open"
   )
   expect_identical(names(display$details), "content")
+})
+
+test_that("open settings serialize only when explicit", {
+  local_shinychat_tool_display(opt = "rich")
+
+  # The content-type open policy is resolved client-side; the server ships
+  # explicit author settings only, FALSE included.
+  opened <- contents_shinychat(
+    new_tool_result(value = "42", extra = list(display = list(open = TRUE)))
+  )
+  expect_true(opened$expanded)
+
+  closed <- contents_shinychat(
+    new_tool_result(value = "42", extra = list(display = list(open = FALSE)))
+  )
+  expect_false(closed$expanded)
+
+  unset <- contents_shinychat(
+    new_tool_result(value = "42", extra = list(display = list(title = "T")))
+  )
+  expect_null(unset$expanded)
+
+  details_unset <- contents_shinychat(
+    new_tool_result(
+      value = "42",
+      extra = list(display = list(details = htmltools::HTML("<pre>code</pre>")))
+    )
+  )
+  expect_null(details_unset$details_open)
+
+  details_explicit <- contents_shinychat(
+    new_tool_result(
+      value = "42",
+      extra = list(
+        display = list(
+          details = list(
+            content = htmltools::HTML("<pre>code</pre>"),
+            open = TRUE
+          )
+        )
+      )
+    )
+  )
+  expect_true(details_explicit$details_open)
 })
 test_that("tool_result_display basic format", {
   local_shinychat_tool_display(opt = "basic")
@@ -1041,7 +1086,8 @@ test_that("tool_result_display() drops NULL fields but keeps defaults", {
       list(
         title = "Title only",
         show_request = TRUE,
-        open = FALSE,
+        # `open` is tri-state: unset (dropped here) lets the content-type
+        # policy decide, distinguishing it from an explicit `FALSE`.
         full_screen = FALSE,
         open_style = "minimal"
       ),
@@ -1202,9 +1248,10 @@ test_that("malformed display flags serialize to their defaults", {
 
   expect_warning(res <- contents_shinychat(result), class = "rlang_warning")
 
-  # Defaults: the request is shown, the card is collapsed and not full screen
+  # Defaults: the request is shown, open is unset (client policy decides)
+  # and the card is not full screen
   expect_true(res$show_request)
-  expect_false(res$expanded)
+  expect_null(res$expanded)
   expect_false(res$full_screen)
 
   # A well-formed bare list is still honored end to end

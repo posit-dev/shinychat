@@ -2,6 +2,8 @@
 
 ## New features and improvements
 
+* Tool-result cards with a visible image now arrive **open by default — whether the image is in the result itself or in custom display content, with or without display metadata** (covering, for example, querychat's visualize cards), and their request display starts collapsed, so the visual is front and center and the code is one click away. The details disclosure mirrors the policy: closed when an image is showing, open otherwise. Set `open = FALSE` in `tool_result_display()` or use the `basic` tool-display override to opt out. As part of this change, the `open` argument of `tool_result_display()` is now tri-state: the default `NULL` applies the content-type policy, while an explicit `TRUE` or `FALSE` always wins.
+
 * `tool_result_display()` gains a `details` slot for a collapsible disclosure in the drill-down card — secondary content, such as executed code, that should stay one click away. Pass content directly (a string renders as Markdown, with language-fenced code blocks syntax-highlighted; use `htmltools::HTML()` or tags for raw HTML), or a named list to also set the disclosure `summary` label and initial `open` state. The disclosure renders with the same chrome as the card's "Tool call" section, between the request and result sections.
 
 * Tool call results that render HTML now syntax-highlight code blocks, matching how code looks elsewhere in the chat. (#455)
