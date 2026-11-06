@@ -1,11 +1,18 @@
-import { memo, useMemo, useRef, useState } from "react"
+import { memo, useEffect, useMemo, useRef, useState } from "react"
 import { ToolCard } from "./ToolCard"
 import { ChevronIcon } from "./ChevronIcon"
 import { RawHTML } from "./RawHTML"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { CopyButton } from "../markdown/components/CopyButton"
 import { highlightHtmlCode } from "../markdown/highlightHtmlCode"
 import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 import { exclamationCircleFill, filePdfFill } from "../utils/icons"
+import {
+  COPY_BUTTON_CLASS,
+  copyTextToClipboard,
+  createCopyButton,
+  flashCopied,
+} from "../utils/copyButton"
 import { useFullscreen } from "./useFullscreen"
 import { useChatStopScroll } from "./context"
 
@@ -122,6 +129,15 @@ export const ToolResult = memo(function ToolResult({
   // state), so mirror toggles into state for the chevron's rotation.
   const [detailsExpanded, setDetailsExpanded] = useState(detailsOpen ?? false)
 
+  const detailsRef = useRef<HTMLDivElement>(null)
+  useDetailsCopyButtons(
+    detailsRef,
+    isMarkdownDetails ? undefined : highlightedDetails,
+  )
+
+  const detailsBodyRef = useRef<HTMLDivElement>(null)
+  const singleCodeBlock = useSingleCodeBlock(detailsBodyRef, highlightedDetails)
+
   return (
     <>
       <ToolCard
@@ -149,7 +165,11 @@ export const ToolResult = memo(function ToolResult({
           stopScroll={stopScroll}
         />
         {highlightedDetails && (
-          <div className="shiny-tool-result__details">
+          <div
+            className="shiny-tool-result__details"
+            ref={detailsRef}
+            {...(singleCodeBlock ? { "data-single-code-block": "" } : {})}
+          >
             <details
               open={detailsOpen || undefined}
               onToggle={(e) => {
@@ -164,16 +184,29 @@ export const ToolResult = memo(function ToolResult({
                 />
                 {detailsSummary ?? "Details"}
               </summary>
-              {isMarkdownDetails ? (
-                <MarkdownContent
-                  content={highlightedDetails}
-                  contentType="markdown"
-                  streaming={false}
-                />
-              ) : (
-                <RawHTML html={highlightedDetails} />
-              )}
+              <div ref={detailsBodyRef}>
+                {isMarkdownDetails ? (
+                  <MarkdownContent
+                    content={highlightedDetails}
+                    contentType="markdown"
+                    streaming={false}
+                  />
+                ) : (
+                  <RawHTML html={highlightedDetails} />
+                )}
+              </div>
             </details>
+            {/* Outside <summary> so clicking it can't toggle the disclosure
+                (and a button nested in the toggle confuses assistive tech);
+                CSS lays it over the summary row's right end. */}
+            {singleCodeBlock && detailsExpanded && (
+              <CopyButton
+                getText={() =>
+                  detailsBodyRef.current?.querySelector("pre")?.textContent ??
+                  ""
+                }
+              />
+            )}
           </div>
         )}
         <ToolResultValue
@@ -186,6 +219,71 @@ export const ToolResult = memo(function ToolResult({
     </>
   )
 })
+
+/**
+ * RawHTML opts out of React's DOM management, so the markdown pipeline's
+ * CopyableCodeBlock can't wrap the details slot's `<pre><code>` blocks.
+ * Inject the same affordance post-mount instead (shared logic lives in
+ * utils/copyButton). The hook must rerun after RawHTML's own innerHTML
+ * effect for the same `html` (child effects run first), which re-adding
+ * unconditionally plus the per-pre guard covers.
+ */
+function useDetailsCopyButtons(
+  ref: React.RefObject<HTMLDivElement | null>,
+  html: string | undefined,
+) {
+  useEffect(() => {
+    const container = ref.current
+    if (!container || !html) return
+
+    const cleanups: Array<() => void> = []
+    for (const pre of container.querySelectorAll("pre")) {
+      if (pre.querySelector(`.${COPY_BUTTON_CLASS}`)) continue
+
+      const button = createCopyButton()
+      let cancelFlash: (() => void) | undefined
+      const onClick = async () => {
+        const text = pre.querySelector("code")?.textContent ?? ""
+        await copyTextToClipboard(text)
+        cancelFlash?.()
+        cancelFlash = flashCopied(button)
+      }
+      button.addEventListener("click", onClick)
+      pre.appendChild(button)
+      cleanups.push(() => {
+        cancelFlash?.()
+        button.removeEventListener("click", onClick)
+      })
+    }
+    return () => cleanups.forEach((cleanup) => cleanup())
+  }, [ref, html])
+}
+
+/**
+ * Whether the details body is exactly one code block (no prose around it).
+ * Only then does copy move up into the summary row; mixed content keeps
+ * per-block buttons. Runs after RawHTML's own innerHTML effect (child
+ * effects run first), so the DOM is populated for either content flavor.
+ */
+function useSingleCodeBlock(
+  ref: React.RefObject<HTMLDivElement | null>,
+  content: string | undefined,
+): boolean {
+  const [single, setSingle] = useState(false)
+  useEffect(() => {
+    const body = ref.current
+    if (!body) {
+      setSingle(false)
+      return
+    }
+    const pres = body.querySelectorAll("pre")
+    setSingle(
+      pres.length === 1 &&
+        body.textContent?.trim() === pres[0]!.textContent?.trim(),
+    )
+  }, [ref, content])
+  return single
+}
 
 function ToolRequestDetails({
   requestCall,
