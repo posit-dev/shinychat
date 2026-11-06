@@ -25,10 +25,15 @@ from test_history_controller import (
     part,
 )
 from test_history_stream_persistence import (
+    _assistant_message,
     _Backend,
+    _chunk,
     _end_stream,
     _open_stream,
     _saved,
+    _start_stream,
+    _text,
+    _wire,
 )
 from test_history_stream_persistence import backend as _backend_fixture
 
@@ -417,6 +422,301 @@ async def test_failed_root_recapture_keeps_the_previously_valid_starting_base(
         root
     ].model_dump_json(exclude={"children", "selected_child"}) == previous
     assert recorder.record.nodes["first"].checkpoint_state == "candidate"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("seeded", [False, True])
+async def test_first_input_onsave_failure_invalidates_the_fresh_root(
+    backend: _Backend,
+    seeded: bool,
+) -> None:
+    """A first-input ``on_save`` failure finishes the stateless root invalid.
+
+    The root holds no previously saved frame, so its empty state can never
+    serve as a rewind destination: finishing it ``valid`` would let a later
+    edit/retry of the first message silently reset the SDK client to ``[]``.
+    Atomic staging still holds -- no model-only commit and no partial frame
+    -- whether or not the client was seeded with few-shot turns. The first
+    exchange keeps its own full model snapshot, so later branches restore
+    the seeded client instead of an empty one.
+    """
+    failing = True
+
+    def capture(values: dict[str, Any]) -> None:
+        if failing:
+            raise RuntimeError("first-input on_save failed")
+        values["dataset"] = "recovered"
+
+    adapter = _prompt_adapter()
+    writer, _ = _make_controller(
+        store=backend.store, adapter=adapter, save_callbacks=[capture]
+    )
+    recorder = writer._exchange_recorder
+    seed_turns: list[dict[str, Any]] = []
+    if seeded:
+        seed_turns = [{"role": "assistant", "content": "seeded few-shot turn"}]
+        adapter.set_turns_json(seed_turns)
+        adapter.set_system_prompt("seeded prompt")
+
+    with pytest.warns(UserWarning, match="first-input on_save failed"):
+        transcript, first = await _open_stream(writer)
+    record = recorder.record
+    assert record is not None
+    root = record.root_id
+    assert record.nodes[root].status == "ok"
+    assert record.nodes[root].checkpoint == "invalid"
+    assert record.nodes[root].state == {}
+    saved_root = (await _saved(backend, record.id)).nodes[root]
+    assert saved_root.status == "ok"
+    assert saved_root.checkpoint == "invalid"
+    assert saved_root.state == {}
+
+    # Recovery at settlement keeps the first exchange a valid checkpoint
+    # holding the full client snapshot (seed turns + question + answer).
+    failing = False
+    settled_turns = [
+        *seed_turns,
+        {"role": "user", "content": "question"},
+        {"role": "assistant", "content": "first answer"},
+    ]
+    adapter.set_turns_json(settled_turns)
+    await _end_stream(transcript)
+    await writer.on_response()
+    assert record.nodes[first].checkpoint == "valid"
+    first_turns = record.nodes[first].state[TURNS_STATE_KEY]
+    assert first_turns.mode == "snapshot"
+    assert first_turns.data == settled_turns
+    assert record.nodes[first].state[VALUES_STATE_KEY].data == {
+        "dataset": "recovered"
+    }
+    # The invalidated root never silently reverts to valid.
+    assert (await _saved(backend, record.id)).nodes[root].checkpoint == (
+        "invalid"
+    )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("kind", "stream_status"),
+    [("edit", "ok"), ("regenerate", "ok"), ("retry", "cancelled")],
+)
+async def test_first_input_onsave_failure_refuses_first_message_resubmit(
+    backend: _Backend,
+    kind: str,
+    stream_status: str,
+) -> None:
+    """The invalid root is no rewind destination for the first message.
+
+    Whatever the first outcome's status, message 1 is not retryable and an
+    explicit edit/retry/regenerate is refused server-side at the checkpoint
+    gate, before any mutation of the record or the live client turns.
+    """
+    failing = True
+
+    def capture(values: dict[str, Any]) -> None:
+        if failing:
+            raise RuntimeError("first-input on_save failed")
+        values["dataset"] = "recovered"
+
+    adapter = _prompt_adapter()
+    writer, _ = _make_controller(
+        store=backend.store, adapter=adapter, save_callbacks=[capture]
+    )
+    seed_turns = [{"role": "assistant", "content": "seeded few-shot turn"}]
+    adapter.set_turns_json(seed_turns)
+    adapter.set_system_prompt("seeded prompt")
+    with pytest.warns(UserWarning, match="first-input on_save failed"):
+        transcript, first = await _open_stream(writer)
+    failing = False
+    settled_turns = [
+        *seed_turns,
+        {"role": "user", "content": "question"},
+        {"role": "assistant", "content": "first answer"},
+    ]
+    adapter.set_turns_json(settled_turns)
+    await _end_stream(transcript, status=stream_status)
+    chat = cast(_FakeChat, writer.chat)
+    chat.actions.clear()
+    await writer.on_response()
+    record = writer._exchange_recorder.record
+    assert record is not None
+    assert record.nodes[first].checkpoint == "valid"
+    metadata = [
+        action
+        for action in chat.actions
+        if action["type"] == "update_exchange_metadata"
+    ]
+    assert metadata[-1]["data"][0] == {
+        "status": stream_status,
+        "retryable": False,
+    }
+    live_turns = adapter.get_turns_json()
+    with pytest.raises(ValueError, match="not a valid checkpoint"):
+        await writer.resubmit(
+            first, kind=kind, request_id=kind, message_index=0
+        )
+    # Refusal happened before any rewind or admission: the live client
+    # turns are untouched and no input was published to the transcript.
+    assert adapter.get_turns_json() == live_turns
+    assert chat.published_inputs == []
+    assert record.nodes[first].checkpoint == "valid"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("kind", ["edit", "regenerate"])
+async def test_first_input_onsave_failure_branches_message_two_from_the_snapshot(
+    backend: _Backend,
+    kind: str,
+) -> None:
+    """Later exchanges still branch from the recovered first snapshot.
+
+    Editing or regenerating message 2 rewinds to exchange 1, restoring the
+    seeded client from its full snapshot, and the conversation continues
+    from the branched position.
+    """
+    failing = True
+
+    def capture(values: dict[str, Any]) -> None:
+        if failing:
+            raise RuntimeError("first-input on_save failed")
+        values["dataset"] = "recovered"
+
+    adapter = _prompt_adapter()
+    writer, _ = _make_controller(
+        store=backend.store, adapter=adapter, save_callbacks=[capture]
+    )
+    seed_turns = [{"role": "assistant", "content": "seeded few-shot turn"}]
+    adapter.set_turns_json(seed_turns)
+    adapter.set_system_prompt("seeded prompt")
+    with pytest.warns(UserWarning, match="first-input on_save failed"):
+        transcript, first = await _open_stream(writer)
+    failing = False
+    first_turns = [
+        *seed_turns,
+        {"role": "user", "content": "question"},
+        {"role": "assistant", "content": "first answer"},
+    ]
+    adapter.set_turns_json(first_turns)
+    await _end_stream(transcript)
+    await writer.on_response()
+    record = writer._exchange_recorder.record
+    assert record is not None
+    assert record.nodes[first].checkpoint == "valid"
+
+    # A second exchange settles on the recovered first checkpoint.
+    transcript, second = await _open_stream(writer)
+    second_turns = [
+        *first_turns,
+        {"role": "user", "content": "second question"},
+        {"role": "assistant", "content": "second answer"},
+    ]
+    adapter.set_turns_json(second_turns)
+    await _end_stream(transcript)
+    await writer.on_response()
+    assert record.nodes[second].checkpoint == "valid"
+
+    replacement = (
+        _stored_message("user", "edited second question")
+        if kind == "edit"
+        else None
+    )
+    await writer.resubmit(
+        second, replacement, kind=kind, request_id=kind, message_index=1
+    )
+    sibling = record.active_leaf
+    assert sibling is not None and sibling not in (first, second)
+    assert record.nodes[sibling].parent_id == first
+    # The rewind restored the seeded client from exchange 1's snapshot,
+    # not an empty reset of the SDK client.
+    assert adapter.get_turns_json() == first_turns
+    assert writer.adapter.get_system_prompt() == "seeded prompt"
+
+    # The branched exchange settles and the conversation continues.
+    branched = _wire(writer)
+    await _start_stream(branched, sibling)
+    await _chunk(branched, _assistant_message(_text("branched answer")))
+    await _end_stream(branched)
+    await writer.on_response()
+    assert record.nodes[sibling].checkpoint == "valid"
+    transcript, third = await _open_stream(writer)
+    assert record.nodes[third].parent_id == sibling
+    adapter.set_turns_json(
+        [
+            *first_turns,
+            {"role": "user", "content": "edited second question"},
+            {"role": "assistant", "content": "branched answer"},
+            {"role": "user", "content": "third question"},
+        ]
+    )
+    await _end_stream(transcript)
+    await writer.on_response()
+    assert record.nodes[third].checkpoint == "valid"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("always_failing", [False, True])
+async def test_first_input_onsave_failure_reopen_semantics(
+    backend: _Backend,
+    always_failing: bool,
+) -> None:
+    """Reopening a first-input ``on_save`` failure stays browsable.
+
+    When only the first capture failed, the recovered first exchange is
+    the writable landing position. When every capture fails, the
+    unresolved leaf keeps the reopen read-only with reason ``interrupted``.
+    """
+    captures = 0
+
+    def capture(values: dict[str, Any]) -> None:
+        nonlocal captures
+        captures += 1
+        if always_failing or captures == 1:
+            raise RuntimeError("first-input on_save failed")
+        values["dataset"] = "recovered"
+
+    adapter = _prompt_adapter()
+    writer, _ = _make_controller(
+        store=backend.store, adapter=adapter, save_callbacks=[capture]
+    )
+    seed_turns = [{"role": "assistant", "content": "seeded few-shot turn"}]
+    adapter.set_turns_json(seed_turns)
+    adapter.set_system_prompt("seeded prompt")
+    with pytest.warns(UserWarning, match="first-input on_save failed"):
+        transcript, first = await _open_stream(writer)
+    settled_turns = [
+        *seed_turns,
+        {"role": "user", "content": "question"},
+        {"role": "assistant", "content": "first answer"},
+    ]
+    adapter.set_turns_json(settled_turns)
+    await _end_stream(transcript)
+    if always_failing:
+        with pytest.warns(UserWarning, match="first-input on_save failed"):
+            await writer.on_response()
+    else:
+        await writer.on_response()
+    record = writer._exchange_recorder.record
+    assert record is not None
+    assert (await _saved(backend, record.id)).nodes[
+        record.root_id
+    ].checkpoint == "invalid"
+
+    viewer, _ = _make_controller(
+        store=backend.reader, adapter=_prompt_adapter()
+    )
+    await viewer.switch_to(record.id)
+    viewer_recorder = viewer._exchange_recorder
+    assert viewer_recorder.record is not None
+    if always_failing:
+        assert viewer_recorder.read_only
+        assert viewer_recorder.read_only_reason == "interrupted"
+        assert viewer_recorder.source_isolated
+    else:
+        assert not viewer_recorder.read_only
+        assert not viewer_recorder.source_isolated
+        assert viewer_recorder.record.active_leaf == first
+        assert viewer.adapter.get_turns_json() == settled_turns
+        assert viewer.adapter.get_system_prompt() == "seeded prompt"
 
 
 @pytest.mark.anyio

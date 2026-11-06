@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import traceback
 import warnings
 from contextlib import contextmanager
 from typing import (
@@ -68,6 +69,22 @@ if TYPE_CHECKING:
 
 class _ModelCaptureError(RuntimeError):
     """Built-in model-state capture failed without committing state."""
+
+
+def _warn_values_capture_failed(node_id: str, error: BaseException) -> None:
+    # Developer diagnostics only: automatic capture failure warns but
+    # completes, with no new user-notification policy.
+    details = "".join(
+        traceback.format_exception(type(error), error, error.__traceback__)
+    )
+    warnings.warn(
+        "Automatic app-state values capture failed at exchange "
+        f"{node_id!r}: a `@chat.history.on_save` callback raised. "
+        "Previously recorded values for this exchange are kept if there "
+        "are any; otherwise the position may not be restorable.\n"
+        f"{details}",
+        stacklevel=3,
+    )
 
 
 class RecorderHost(Protocol):
@@ -272,14 +289,7 @@ class _ExchangeRecorder:
         except Exception as error:
             if strict:
                 raise
-            # Developer diagnostics only: automatic capture failure warns
-            # but completes, with no new user-notification policy.
-            warnings.warn(
-                "Automatic app-state values capture failed at exchange "
-                f"{node_id!r}; keeping the previously recorded values "
-                f"({type(error).__name__}: {error}).",
-                stacklevel=2,
-            )
+            _warn_values_capture_failed(node_id, error)
             previous = record.nodes[node_id].state.get(VALUES_STATE_KEY)
             if previous is not None:
                 return previous.model_copy(deep=True)
@@ -563,12 +573,7 @@ class _ExchangeRecorder:
                     raise _ModelCaptureError(str(error)) from error
                 if name != VALUES_STATE_KEY or strict:
                     raise
-                warnings.warn(
-                    "Automatic app-state values capture failed at exchange "
-                    f"{node_id!r}; keeping the previously recorded values "
-                    f"({type(error).__name__}: {error}).",
-                    stacklevel=2,
-                )
+                _warn_values_capture_failed(node_id, error)
                 return False
             if inspect.isawaitable(entry):
                 entry = await entry
@@ -804,12 +809,7 @@ class _ExchangeRecorder:
         except Exception as error:
             if strict:
                 raise
-            warnings.warn(
-                "Automatic app-state values capture failed at exchange "
-                f"{node_id!r}; keeping the previously recorded values "
-                f"({type(error).__name__}: {error}).",
-                stacklevel=2,
-            )
+            _warn_values_capture_failed(node_id, error)
             return False
         for key, node in staged.nodes.items():
             live.nodes[key].state = node.state
@@ -872,12 +872,7 @@ class _ExchangeRecorder:
                     )
                 )
             except Exception as error:
-                warnings.warn(
-                    "Automatic app-state values capture failed at exchange "
-                    f"{leaf!r}; keeping the previously recorded values "
-                    f"({type(error).__name__}: {error}).",
-                    stacklevel=2,
-                )
+                _warn_values_capture_failed(leaf, error)
                 reliable = False
             node.checkpoint = "valid" if reliable else "invalid"
             self.record.response_count += 1
@@ -1046,10 +1041,24 @@ class _ExchangeRecorder:
                 if capture_start:
                     # First input defines the starting position. Capture model
                     # and app state together, with one on_save invocation.
-                    await self.capture_state_locked(
+                    root_had_saved_state = bool(
+                        self.record.nodes[self.record.root_id].state
+                    )
+                    captured = await self.capture_state_locked(
                         self.record.root_id, "root_close", strict=False
                     )
                     self._close_root_if_inactive()
+                    if not captured and not root_had_saved_state:
+                        # The first-input capture failed and this root never
+                        # held a saved frame (no explicit chat.history.save()
+                        # preceded the first input). Its empty state can
+                        # never restore the live client, so finish it
+                        # invalid: it must not serve as a rewind destination
+                        # for editing/retrying message 1. A root that already
+                        # holds a manually saved frame keeps that valid pair.
+                        self.record.nodes[
+                            self.record.root_id
+                        ].checkpoint = "invalid"
                 elif not self.record.nodes[active_leaf].is_checkpoint:
                     # Validate admission without promoting an unresolved
                     # predecessor into a model checkpoint.
