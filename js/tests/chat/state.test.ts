@@ -134,6 +134,27 @@ describe("chatReducer", () => {
     expect(settled.inputDisabled).toBe(false)
   })
 
+  it.each([false, true])(
+    "projects parent_editable=%s onto the user row",
+    (parent_editable) => {
+      const state = chatReducer(initialState, {
+        type: "INPUT_SENT",
+        content: "hi",
+        role: "user",
+        awaitResponse: false,
+      })
+      const projected = chatReducer(state, {
+        type: "update_exchange_metadata",
+        data: { 0: { status: "ok", retryable: false, parent_editable } },
+      })
+      expect(projected.messages[0]?.exchange).toEqual({
+        status: "ok",
+        retryable: false,
+        parent_editable,
+      })
+    },
+  )
+
   it("a successful retry fully replaces stale error exchange metadata", () => {
     let state = chatReducer(initialState, {
       type: "INPUT_SENT",

@@ -29,6 +29,157 @@ const imageAttachment = (src: string, mime = "image/png") => ({
   size: 0,
 })
 
+describe("ChatMessage parent checkpoint validity", () => {
+  it.each(["pending", "ok", "error", "cancelled"] as const)(
+    "disables Edit with a tooltip for an invalid parent regardless of %s outcome",
+    async (status) => {
+      const exchange = { status, retryable: false, parent_editable: false }
+      const onStartEdit = vi.fn()
+      render(
+        <ChatMessage
+          index={0}
+          message={userMessage({ exchange })}
+          onEdit={vi.fn()}
+          onStartEdit={onStartEdit}
+        />,
+      )
+      const edit = screen.getByRole("button", { name: "Edit message" })
+      expect(edit.getAttribute("aria-disabled")).toBe("true")
+      expect(screen.queryByRole("tooltip")).toBeNull()
+
+      fireEvent.focus(edit)
+      const tooltip = await screen.findByRole("tooltip")
+      expect(tooltip.textContent).toBe("This message can't be edited.")
+      expect(edit.getAttribute("aria-describedby")).toBe(tooltip.id)
+
+      fireEvent.click(edit)
+      expect(onStartEdit).not.toHaveBeenCalled()
+    },
+  )
+
+  it("does not offer Edit for an invalid parent when busy or read-only", () => {
+    const exchange = {
+      status: "ok" as const,
+      retryable: false,
+      parent_editable: false,
+    }
+    const { rerender } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        disabled
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    rerender(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        readOnly
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+  })
+
+  it("keeps the response error visible beside the disabled Edit", () => {
+    const exchange = {
+      status: "error" as const,
+      retryable: false,
+      parent_editable: false,
+      error_message: "The response could not be completed.",
+    }
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(exchange.error_message)).toBeTruthy()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+  })
+
+  it("keeps a successful non-retryable exchange editable", () => {
+    const onStartEdit = vi.fn()
+    const exchange = {
+      status: "ok" as const,
+      retryable: false,
+      parent_editable: true,
+    }
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        onStartEdit={onStartEdit}
+        onRetry={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }))
+    expect(onStartEdit).toHaveBeenCalledWith("m1")
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+  })
+
+  it("updates Edit availability without losing sibling navigation", () => {
+    const onNavigate = vi.fn()
+    const props = {
+      index: 0,
+      onEdit: vi.fn(),
+      onNavigate,
+    }
+    const message = userMessage({ siblings: { index: 1, total: 2 } })
+    const { rerender } = render(<ChatMessage {...props} message={message} />)
+    // Legacy metadata producers (including R's pre-port history) omit the field.
+    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
+    const exchange = {
+      status: "ok" as const,
+      retryable: false,
+      parent_editable: false,
+    }
+    rerender(<ChatMessage {...props} message={{ ...message, exchange }} />)
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
+    fireEvent.click(screen.getByRole("button", { name: "Previous version" }))
+    expect(onNavigate).toHaveBeenCalledWith(0, "prev")
+    rerender(
+      <ChatMessage
+        {...props}
+        message={{
+          ...message,
+          exchange: { ...exchange, parent_editable: true },
+        }}
+      />,
+    )
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull()
+  })
+
+  it("preserves Edit for exchange metadata from an older server", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange: { status: "ok", retryable: false } })}
+        onEdit={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
+  })
+})
+
 describe("ChatMessage attachments", () => {
   it("renders an <img> for each attached image", () => {
     render(

@@ -110,6 +110,8 @@ export interface ChatMessageData {
   exchange?: {
     status: "pending" | "ok" | "error" | "cancelled"
     retryable: boolean
+    /** Parent checkpoint validity; absent on older servers. */
+    parent_editable?: boolean
     preparation_failed?: boolean
     error_message?: string
   }

@@ -41,6 +41,9 @@ import { useAttachmentStaging } from "./useAttachmentStaging"
 import { AttachmentTray } from "./AttachmentTray"
 import { CitationCollectorProvider } from "./citationCollector"
 import { SourcesSummary } from "./SourcesSummary"
+import { FloatingPortal, FloatingArrow } from "@floating-ui/react"
+import { portalTheme } from "./portalTheme"
+import { useTooltip } from "./useTooltip"
 
 type TagComponentMap = Record<string, ComponentType<unknown>>
 
@@ -120,6 +123,57 @@ interface ChatMessageProps {
   thinkingShowAfter?: number
 }
 
+const EDIT_UNAVAILABLE_MESSAGE = "This message can't be edited."
+
+function EditUnavailableButton() {
+  const {
+    open,
+    refs,
+    floatingStyles,
+    context,
+    arrowRef,
+    getReferenceProps,
+    getFloatingProps,
+  } = useTooltip()
+  const portal = portalTheme(refs.domReference.current)
+
+  return (
+    <>
+      <button
+        ref={refs.setReference}
+        type="button"
+        className="shiny-chat-edit-btn"
+        aria-disabled="true"
+        aria-label="Edit message"
+        dangerouslySetInnerHTML={{ __html: pencil }}
+        {...getReferenceProps()}
+      />
+      {open && (
+        <FloatingPortal>
+          <div
+            ref={refs.setFloating}
+            className="shiny-chat-tooltip shiny-floating-overlay"
+            style={{ ...portal.style, ...floatingStyles }}
+            data-bs-theme={portal.theme}
+            {...getFloatingProps()}
+          >
+            <div className="shiny-chat-tooltip__inner">
+              {EDIT_UNAVAILABLE_MESSAGE}
+            </div>
+            <FloatingArrow
+              ref={arrowRef}
+              context={context}
+              width={12.8}
+              height={6.4}
+              className="shiny-chat-tooltip__arrow"
+            />
+          </div>
+        </FloatingPortal>
+      )}
+    </>
+  )
+}
+
 export const ChatMessage = memo(function ChatMessage({
   message,
   index,
@@ -151,10 +205,19 @@ export const ChatMessage = memo(function ChatMessage({
   const [hasEditText, setHasEditText] = useState(false)
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
+  const canStartEdit = !!onEdit && !disabled && !readOnly
+  const parentEditable = message.exchange?.parent_editable !== false
+  const canEdit = canStartEdit && parentEditable
+  const showEditUnavailable = canStartEdit && !parentEditable
   const showPreparationFailure =
     isUser &&
     message.exchange?.status === "error" &&
     message.exchange.preparation_failed
+  const showResponseError =
+    !readOnly &&
+    !showPreparationFailure &&
+    message.exchange?.status === "error" &&
+    !!message.exchange.error_message
 
   const blocks = message.blocks
 
@@ -228,7 +291,8 @@ export const ChatMessage = memo(function ChatMessage({
     isUser &&
     !disabled &&
     (!isEditing || readOnly) &&
-    ((!readOnly && !!onEdit) ||
+    (canEdit ||
+      showEditUnavailable ||
       (!!onNavigate && (message.siblings?.total ?? 0) > 1))
 
   const [touchRevealed, setTouchRevealed] = useState(false)
@@ -725,17 +789,14 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
       {isUser &&
         (!isEditing || readOnly) &&
-        ((onEdit && !disabled && !readOnly) ||
+        (canEdit ||
+          showEditUnavailable ||
           (message.siblings && message.siblings.total > 1) ||
-          (message.exchange?.retryable && onRetry && !readOnly)) && (
+          (message.exchange?.retryable && onRetry && !readOnly) ||
+          showResponseError) && (
           <div
             className={`shiny-chat-message-footer${
-              !readOnly &&
-              !showPreparationFailure &&
-              message.exchange?.status === "error" &&
-              message.exchange.error_message
-                ? " shiny-chat-message-footer-error"
-                : ""
+              showResponseError ? " shiny-chat-message-footer-error" : ""
             }`}
           >
             {message.siblings && message.siblings.total > 1 && (
@@ -769,7 +830,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </button>
               </div>
             )}
-            {onEdit && !disabled && !readOnly && (
+            {canEdit && (
               <button
                 type="button"
                 className="shiny-chat-edit-btn"
@@ -782,6 +843,7 @@ export const ChatMessage = memo(function ChatMessage({
                 dangerouslySetInnerHTML={{ __html: pencil }}
               />
             )}
+            {showEditUnavailable && <EditUnavailableButton />}
             {message.exchange?.retryable && onRetry && !readOnly && (
               <button
                 type="button"
@@ -793,14 +855,11 @@ export const ChatMessage = memo(function ChatMessage({
                 dangerouslySetInnerHTML={{ __html: arrowClockwise }}
               />
             )}
-            {!readOnly &&
-              !showPreparationFailure &&
-              message.exchange?.status === "error" &&
-              message.exchange.error_message && (
-                <span className="shiny-chat-retry-error">
-                  {message.exchange.error_message}
-                </span>
-              )}
+            {showResponseError && (
+              <span className="shiny-chat-retry-error">
+                {message.exchange?.error_message}
+              </span>
+            )}
           </div>
         )}
       {lightboxPortal}

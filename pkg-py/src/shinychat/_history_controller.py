@@ -1505,6 +1505,7 @@ class HistoryController:
             terminal = node_is_terminal_incomplete(node)
             metadata: ExchangeMetadata = {
                 "status": node.status,
+                "parent_editable": parent is not None and parent.is_checkpoint,
                 "retryable": (
                     node.status in _RETRYABLE_STATUSES
                     and parent is not None

@@ -3537,6 +3537,7 @@ async def test_v2_restore_with_unavailable_model_context_becomes_read_only(
     expected_metadata = {
         "status": "error",
         "retryable": False,
+        "parent_editable": True,
         "error_message": HISTORY_ERROR_GENERIC,
     }
     assert {
@@ -5822,8 +5823,8 @@ async def test_v2_navigation_replays_selected_sibling_and_rewinds_turns():
     assert chat.actions[-2] == {
         "type": "update_exchange_metadata",
         "data": {
-            0: {"status": "ok", "retryable": False},
-            2: {"status": "ok", "retryable": False},
+            0: {"status": "ok", "retryable": False, "parent_editable": True},
+            2: {"status": "ok", "retryable": False, "parent_editable": True},
         },
     }
     assert chat.actions[-1]["type"] == "history_update"
@@ -7206,6 +7207,20 @@ async def test_v2_edit_uses_resubmit():
 
 
 @pytest.mark.anyio
+async def test_v2_input_without_parent_is_not_editable() -> None:
+    controller, chat, _adapter, _store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    record = controller._exchange_recorder.record
+    assert record is not None
+    record.nodes[target].parent_id = None
+
+    await controller._send_exchange_metadata()
+
+    assert chat.actions[-1]["data"][0]["parent_editable"] is False
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("status", ["pending", "error", "cancelled"])
 async def test_v2_projects_retry_metadata_for_restored_interrupted_exchanges(
     status: str,
@@ -7223,14 +7238,22 @@ async def test_v2_projects_retry_metadata_for_restored_interrupted_exchanges(
 
     await controller._send_exchange_metadata()
 
-    expected_target = {"status": status, "retryable": True}
+    expected_target = {
+        "status": status,
+        "retryable": True,
+        "parent_editable": True,
+    }
     if status == "error":
         expected_target["error_message"] = HISTORY_ERROR_GENERIC
     assert chat.actions == [
         {
             "type": "update_exchange_metadata",
             "data": {
-                0: {"status": "ok", "retryable": False},
+                0: {
+                    "status": "ok",
+                    "retryable": False,
+                    "parent_editable": True,
+                },
                 1: expected_target,
             },
         }
@@ -8881,7 +8904,7 @@ async def _sent() -> bool:
         ("ok", "answer"),
     ],
 )
-@pytest.mark.parametrize("parent_checkpoint", ["valid", "invalid"])
+@pytest.mark.parametrize("parent_checkpoint", ["valid", "invalid", "candidate"])
 async def test_v2_response_settlement_publishes_authoritative_retry_metadata(
     status: str, content: str, parent_checkpoint: str
 ) -> None:
@@ -8936,6 +8959,7 @@ async def test_v2_response_settlement_publishes_authoritative_retry_metadata(
     metadata: dict[str, Any] = {
         "status": status,
         "retryable": status != "ok" and parent_checkpoint == "valid",
+        "parent_editable": parent_checkpoint == "valid",
     }
     if status == "error":
         metadata["error_message"] = HISTORY_ERROR_GENERIC
@@ -9034,7 +9058,9 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
 
     assert {
         "type": "update_exchange_metadata",
-        "data": {0: {"status": "ok", "retryable": False}},
+        "data": {
+            0: {"status": "ok", "retryable": False, "parent_editable": True}
+        },
     } in cast(_FakeChat, controller.chat).actions
     persisted = await store.get(part(), record.id)
     assert isinstance(persisted, ConversationRecordV2)
