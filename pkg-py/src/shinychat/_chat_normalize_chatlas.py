@@ -4,7 +4,7 @@ import json
 import os
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union, cast
 
 from htmltools import (
     HTML,
@@ -17,7 +17,7 @@ from htmltools import (
     TagList,
 )
 from pydantic import BaseModel, field_serializer, field_validator
-from typing_extensions import TypeAliasType
+from typing_extensions import TypeAliasType, TypedDict
 
 from ._chat_types import ChatMessage, ToolRequestBlock, ToolResultBlock
 from ._htmltools_serialization import SerializedHTML, serialize_htmltools
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from htmltools import Tagified
 
 __all__ = [
+    "ToolResultDetails",
     "ToolResultDisplay",
 ]
 
@@ -178,6 +179,15 @@ class ToolResultComponent(ToolCardComponent):
 
     footer: TagChild = None
     "Optional HTML content to display in the card footer (below the card body)."
+
+    details: TagChild = None
+    "Optional content for the card's collapsible details disclosure."
+
+    details_summary: Optional[str] = None
+    'The details disclosure label; the client falls back to "Details".'
+
+    details_open: Optional[bool] = None
+    "Initial details disclosure state; unset lets the client's policy decide."
 
     full_screen: bool = False
     "Controls whether a fullscreen toggle button is displayed on the card."
@@ -370,6 +380,14 @@ class ToolResultDisplay(BaseModel):
         default result display.
     - ``footer``:
         Optional HTML content to display in the drill-down card footer.
+    - ``details``:
+        Content for a collapsible disclosure in the drill-down card, placed
+        above the result body (below the request section when shown).
+        Intended for secondary content that should be one click away, such
+        as executed code. Pass content directly (a string renders as
+        Markdown; wrap in ``HTML()`` or pass tags for raw HTML), or a
+        ``ToolResultDetails`` dict to also control the disclosure label
+        and initial state.
     """
 
     title: Optional[str] = None
@@ -384,6 +402,7 @@ class ToolResultDisplay(BaseModel):
     markdown: Optional[str] = None
     text: Optional[str] = None
     footer: TagChild = None
+    details: Optional[Union[TagChild, "ToolResultDetails"]] = None
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -398,6 +417,70 @@ class ToolResultDisplay(BaseModel):
             return restore_rendered_html(value)
         else:
             return value
+
+    @field_serializer("details")
+    def _serialize_details(
+        self, value: Optional["ToolResultDetails"]
+    ) -> Optional[dict[str, Any]]:
+        if value is None:
+            return None
+        # Markdown strings are already JSON-safe; HTML content needs the
+        # rendered-HTML codec (which the validator's restore branch reads
+        # back as the HTML flavor).
+        return {
+            key: (
+                serialize_htmltools(val)
+                if key == "content" and not details_content_is_markdown(val)
+                else val
+            )
+            for key, val in value.items()
+        }
+
+    @field_validator("details", mode="before")
+    @classmethod
+    def _validate_details(cls, value: object) -> object:
+        # Canonicalize to the dict form; a serialized-HTML content dict
+        # restores from history (see _serialize_details).
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            unknown = set(value) - {"content", "summary", "open"}
+            if unknown:
+                raise ValueError(
+                    f"Unexpected `details` key(s): {sorted(unknown)}. "
+                    "Expected keys: 'content', 'summary', 'open'."
+                )
+            content = value.get("content")
+            if content is None:
+                raise ValueError(
+                    "`details` requires a 'content' item: a string (rendered "
+                    "as Markdown) or HTML()/tags (raw HTML)."
+                )
+            if isinstance(content, dict):
+                return {**value, "content": restore_rendered_html(content)}
+            return value
+        return {"content": value}
+
+
+class ToolResultDetails(TypedDict, total=False):
+    """The full form of ``ToolResultDisplay``'s ``details`` field.
+
+    ``content`` is the disclosure body: strings render as Markdown; wrap in
+    ``HTML()`` or pass tags for raw HTML. Code blocks fenced with a language
+    (e.g. \"```r\") are syntax-highlighted. ``summary`` is the disclosure
+    label (default ``"Details"``). ``open`` is the initial disclosure state;
+    unset lets the content-type policy decide (closed when the result
+    contains an image, open otherwise).
+    """
+
+    content: TagChild
+    summary: str
+    open: bool
+
+
+def details_content_is_markdown(content: object) -> bool:
+    "Bare strings are Markdown; HTML()/tags are raw HTML."
+    return isinstance(content, str) and not isinstance(content, HTML)
 
 
 GroupingValue = Literal["none", "tool", "all"]
@@ -509,6 +592,11 @@ def tool_result_contents(
         icon = HTML(icon)
     if value_type == "html" and isinstance(value, str):
         value = HTML(value)
+    # The field validator canonicalizes `details` to the dict form.
+    details = (
+        cast("ToolResultDetails", display.details) if display.details else {}
+    )
+    details_content = details.get("content")
 
     # display (tool *result* level) takes precedence over
     # annotations (tool *definition* level)
@@ -525,6 +613,9 @@ def tool_result_contents(
         show_request=display.show_request,
         expanded=display.open,
         footer=display.footer,
+        details=details_content,
+        details_summary=details.get("summary"),
+        details_open=details.get("open"),
         full_screen=display.full_screen,
         open_style=display.open_style,
         grouping=annotations.grouping,
@@ -639,6 +730,19 @@ def tool_result_block(
         footer_ui = TagList(component.footer).render()
         block["footer"] = str(footer_ui["html"])
         deps.extend(footer_ui["dependencies"])
+
+    if component.details is not None:
+        if details_content_is_markdown(component.details):
+            block["details"] = cast(str, component.details)
+            block["details_type"] = "markdown"
+        else:
+            details_ui = TagList(component.details).render()
+            block["details"] = str(details_ui["html"])
+            deps.extend(details_ui["dependencies"])
+    if component.details_summary is not None:
+        block["details_summary"] = component.details_summary
+    if component.details_open is not None:
+        block["details_open"] = component.details_open
 
     return block, deps
 

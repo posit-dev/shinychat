@@ -2,6 +2,8 @@
 
 ## New features and improvements
 
+* `tool_result_display()` gains a `details` slot for a collapsible disclosure in the drill-down card — secondary content, such as executed code, that should stay one click away. Pass content directly (a string renders as Markdown, with language-fenced code blocks syntax-highlighted; use `htmltools::HTML()` or tags for raw HTML), or a named list to also set the disclosure `summary` label and initial `open` state. The disclosure renders with the same chrome as the card's "Tool call" section, between the request and result sections.
+
 * Tool call results that render HTML now syntax-highlight code blocks, matching how code looks elsewhere in the chat. (#455)
 
 * Text file attachments are now sent to the model via `ellmer::content_document_url()` rather than a hand-assembled `<file-attachment>` text wrapper, so providers that handle documents natively receive a real document. This raises the minimum required ellmer version to 0.5.0. (#415)

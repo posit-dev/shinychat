@@ -14,6 +14,7 @@ tool_result_display(
   open = FALSE,
   full_screen = FALSE,
   footer = NULL,
+  details = NULL,
   label = NULL,
   value_preview = NULL,
   open_style = "minimal"
@@ -52,6 +53,18 @@ the drill-down card.}
 
 \item{footer}{Optional HTML content to display below the drill-down card
 body.}
+
+\item{details}{Content for a collapsible disclosure in the drill-down
+card, placed above the result body (below the request section when
+shown). Intended for secondary content that should be one click away,
+such as executed code. Pass content directly -- a character string
+renders as Markdown (language-fenced code blocks are
+syntax-highlighted); use \code{\link[htmltools:HTML]{htmltools::HTML()}} or tags for raw HTML -- or
+a named list with \code{content} (same rules), \code{summary} (the disclosure
+label; default \code{"Details"}), and \code{open} (initial disclosure state; the
+default closes the disclosure when the result contains an image -- the
+visual is showing, so secondary content stays one click away -- and
+opens it otherwise).}
 
 \item{label}{A short, per-call identifying value shown in the activity row
 (e.g. a filename or query). Distinguishes this call from other calls to the
