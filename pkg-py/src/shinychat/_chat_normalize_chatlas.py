@@ -19,6 +19,7 @@ from htmltools import (
 from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType, TypedDict
 
+from ._chat_console import console_send_display
 from ._chat_types import ChatMessage, ToolRequestBlock, ToolResultBlock
 from ._htmltools_serialization import SerializedHTML, serialize_htmltools
 
@@ -138,15 +139,22 @@ def as_content_extra_item(value: object) -> dict[str, str]:
     raise TypeError(f"Unexpected content extra type: {type(value)}")
 
 
-def as_content_extra_item_or_text(value: object) -> dict[str, str]:
+def as_content_extra_item_or_text(
+    value: object, text_as_code: bool
+) -> dict[str, str]:
     from chatlas.types import ContentText
 
     if is_content_extra(value):
         return as_content_extra_item(value)
-    elif isinstance(value, ContentText):
-        return {"type": "text", "value": value.text, "value_type": "markdown"}
+    # Text interleaved with binary content is program output, so render it
+    # as code: markdown would collapse aligned columns into prose and turn
+    # 4-space-indented lines (e.g. an R data.frame header) into accidental
+    # code blocks. Pure-text multi-part results keep markdown.
+    value_type = "code" if text_as_code else "markdown"
+    if isinstance(value, ContentText):
+        return {"type": "text", "value": value.text, "value_type": value_type}
     else:
-        return {"type": "text", "value": str(value), "value_type": "markdown"}
+        return {"type": "text", "value": str(value), "value_type": value_type}
 
 
 class ToolResultComponent(ToolCardComponent):
@@ -808,7 +816,8 @@ def get_tool_result_display(
 
     display = x.extra.get("display")
     if display is None:
-        return ToolResultDisplay()
+        console = console_send_display(x.extra, request)
+        return ToolResultDisplay(**console) if console else ToolResultDisplay()
 
     if isinstance(display, ToolResultDisplay):
         return display
@@ -851,7 +860,10 @@ def tool_result_display(
     if isinstance(x.value, (list, tuple)) and any(
         is_content(v) for v in x.value
     ):
-        items = [as_content_extra_item_or_text(v) for v in x.value]
+        text_as_code = any(is_content_extra(v) for v in x.value)
+        items = [
+            as_content_extra_item_or_text(v, text_as_code) for v in x.value
+        ]
         return json.dumps(items), "content_extra"
 
     return str(x.get_model_value()), "code"

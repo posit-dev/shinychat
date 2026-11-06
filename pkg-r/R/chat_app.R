@@ -907,9 +907,10 @@ chat_server <- function(
 
     hist_ctrl <- history_controller()
     if (!is.null(hist_ctrl)) {
-      cli::cli_abort(
-        "Can't clear a chat with conversation history enabled. Use {.code chat$new_chat()} to start a new conversation."
-      )
+      cli::cli_abort(c(
+        "Can't clear a chat with conversation history enabled. Use {.code chat$new_chat()} to start a new conversation.",
+        "i" = "Then use {.code chat_append()} and {.code chat$client$set_turns()} to populate it."
+      ))
     }
 
     if (append_stream_task$status() == "running") {
