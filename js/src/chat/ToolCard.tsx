@@ -138,17 +138,19 @@ export function ToolCard({
         <BlockErrorBoundary context={`${toolName} details`} resetKey={resetKey}>
           {children}
         </BlockErrorBoundary>
-        {fullScreen && onEnterFullscreen && (
-          <button
-            className="tool-fullscreen-toggle badge rounded-pill"
-            onClick={handleFullscreenClick}
-            aria-label="Expand card"
-            aria-controls={contentId}
-            type="button"
-            dangerouslySetInnerHTML={fullscreenEnterDSIH}
-          />
-        )}
       </div>
+      {/* Sibling of the scrolling .card-body, not a child: absolute to the
+          card it stays at the visible bottom-right while the body scrolls. */}
+      {fullScreen && onEnterFullscreen && (
+        <button
+          className="tool-fullscreen-toggle badge rounded-pill"
+          onClick={handleFullscreenClick}
+          aria-label="Expand card"
+          aria-controls={contentId}
+          type="button"
+          dangerouslySetInnerHTML={fullscreenEnterDSIH}
+        />
+      )}
       {footer && (
         <BlockErrorBoundary
           context={`${toolName} footer`}
