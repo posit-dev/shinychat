@@ -31,23 +31,59 @@ const imageAttachment = (src: string, mime = "image/png") => ({
 
 describe("ChatMessage parent checkpoint validity", () => {
   it.each(["pending", "ok", "error", "cancelled"] as const)(
-    "hides Edit for an invalid parent regardless of %s outcome",
-    (status) => {
+    "disables Edit with a tooltip for an invalid parent regardless of %s outcome",
+    async (status) => {
       const exchange = { status, retryable: false, parent_editable: false }
-      const { container } = render(
+      const onStartEdit = vi.fn()
+      render(
         <ChatMessage
           index={0}
           message={userMessage({ exchange })}
           onEdit={vi.fn()}
-          onStartEdit={vi.fn()}
+          onStartEdit={onStartEdit}
         />,
       )
-      expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
-      expect(container.querySelector(".shiny-chat-message-footer")).toBeNull()
+      const edit = screen.getByRole("button", { name: "Edit message" })
+      expect(edit.getAttribute("aria-disabled")).toBe("true")
+      expect(screen.queryByRole("tooltip")).toBeNull()
+
+      fireEvent.focus(edit)
+      const tooltip = await screen.findByRole("tooltip")
+      expect(tooltip.textContent).toBe("This message can't be edited.")
+      expect(edit.getAttribute("aria-describedby")).toBe(tooltip.id)
+
+      fireEvent.click(edit)
+      expect(onStartEdit).not.toHaveBeenCalled()
     },
   )
 
-  it("keeps the response error visible when its invalid parent hides both actions", () => {
+  it("does not offer Edit for an invalid parent when busy or read-only", () => {
+    const exchange = {
+      status: "ok" as const,
+      retryable: false,
+      parent_editable: false,
+    }
+    const { rerender } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        disabled
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    rerender(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        readOnly
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+  })
+
+  it("keeps the response error visible beside the disabled Edit", () => {
     const exchange = {
       status: "error" as const,
       retryable: false,
@@ -63,7 +99,11 @@ describe("ChatMessage parent checkpoint validity", () => {
       />,
     )
     expect(screen.getByText(exchange.error_message)).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
     expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
   })
 
@@ -88,7 +128,7 @@ describe("ChatMessage parent checkpoint validity", () => {
     expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
   })
 
-  it("updates Edit visibility without losing sibling navigation", () => {
+  it("updates Edit availability without losing sibling navigation", () => {
     const onNavigate = vi.fn()
     const props = {
       index: 0,
@@ -105,7 +145,11 @@ describe("ChatMessage parent checkpoint validity", () => {
       parent_editable: false,
     }
     rerender(<ChatMessage {...props} message={{ ...message, exchange }} />)
-    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
     fireEvent.click(screen.getByRole("button", { name: "Previous version" }))
     expect(onNavigate).toHaveBeenCalledWith(0, "prev")
     rerender(
@@ -117,7 +161,11 @@ describe("ChatMessage parent checkpoint validity", () => {
         }}
       />,
     )
-    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull()
   })
 
   it("retains a held edit when its parent becomes invalid, then shows the error after closing", () => {
@@ -159,7 +207,11 @@ describe("ChatMessage parent checkpoint validity", () => {
     rerender(<ChatMessage index={0} message={invalidMessage} onEdit={onEdit} />)
     expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
     expect(screen.getByText(invalidMessage.exchange.error_message)).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(
+      screen
+        .getByRole("button", { name: "Edit message" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true")
   })
 
   it("preserves Edit for exchange metadata from an older server", () => {
@@ -513,7 +565,7 @@ describe("ChatMessage attachments", () => {
       <ChatToolContext.Provider
         value={{
           supersededRequests: new Set(["req-1"]),
-          requestDefinitionIcons: new Map(),
+          requestDefinitions: new Map(),
         }}
       >
         <ChatMessage index={0} message={message} />
@@ -569,7 +621,7 @@ describe("ChatMessage attachments", () => {
       <ChatToolContext.Provider
         value={{
           supersededRequests: new Set(["req-1"]),
-          requestDefinitionIcons: new Map(),
+          requestDefinitions: new Map(),
         }}
       >
         <ChatMessage index={0} message={message} />
@@ -578,6 +630,179 @@ describe("ChatMessage attachments", () => {
     expect(container.textContent).toContain("email")
     expect(container.textContent).not.toContain("search")
     expect(container.textContent).not.toContain("×2")
+  })
+
+  it("keeps the definition title as a settled multi-call group's header", () => {
+    // Two requests carry the tool's definition title; their results carry
+    // per-call display titles. Once the results supersede the requests, the
+    // header must stay "Checking weather" and both children keep their result
+    // titles -- instead of the header adopting the first result title and the
+    // duplicate first child degrading to the bare tool name (issue #456).
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "tool",
+          groups: [
+            {
+              key: "tool:get_weather",
+              toolName: "get_weather",
+              title: "Checking weather",
+              titleSettled: false,
+              count: 4,
+              segments: [
+                {
+                  toolName: "get_weather",
+                  title: "Checking weather",
+                  count: 4,
+                  settled: false,
+                },
+              ],
+              calls: [
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "running",
+                  definitionTitle: "Checking weather",
+                  arguments: '{"city":"Duluth"}',
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "running",
+                  definitionTitle: "Checking weather",
+                  arguments: '{"city":"Tokyo"}',
+                },
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Checked weather in Duluth",
+                  value: "72F and sunny in Duluth",
+                  valueType: "text",
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Checked weather in Tokyo",
+                  value: "72F and sunny in Tokyo",
+                  valueType: "text",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{
+          supersededRequests: new Set(["call_1", "call_2"]),
+          requestDefinitions: new Map([
+            ["call_1", { title: "Checking weather" }],
+            ["call_2", { title: "Checking weather" }],
+          ]),
+        }}
+      >
+        <ChatMessage index={0} message={message} />
+      </ChatToolContext.Provider>,
+    )
+    expect(container.textContent).toContain("Checking weather")
+    expect(container.textContent).toContain("×2")
+    expect(container.textContent).toContain("Checked weather in Duluth")
+    expect(container.textContent).toContain("Checked weather in Tokyo")
+    expect(container.textContent).not.toContain("get_weather")
+  })
+
+  it("keeps differing result titles out of a settled multi-call group's header", () => {
+    // No definition title: the requests carry nothing to inherit. The header
+    // must not adopt the first settled call's result title (which would also
+    // suppress that call's row label as a duplicate); with no title every
+    // call shares, the header falls back to the tool name and each row keeps
+    // its own result title.
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "tool",
+          groups: [
+            {
+              key: "tool:get_weather",
+              toolName: "get_weather",
+              titleSettled: false,
+              count: 4,
+              segments: [{ toolName: "get_weather", count: 4, settled: false }],
+              calls: [
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "running",
+                  arguments: '{"city":"Duluth"}',
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "running",
+                  arguments: '{"city":"Tokyo"}',
+                },
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Got weather for Duluth",
+                  value: "72F and sunny in Duluth",
+                  valueType: "text",
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Got weather for Tokyo",
+                  value: "72F and sunny in Tokyo",
+                  valueType: "text",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{
+          supersededRequests: new Set(["call_1", "call_2"]),
+          requestDefinitions: new Map(),
+        }}
+      >
+        <ChatMessage index={0} message={message} />
+      </ChatToolContext.Provider>,
+    )
+    const header = container.querySelector(".shiny-chat-tool-group__titlewrap")
+    expect(header?.textContent).toContain("Used ")
+    expect(header?.textContent).toContain("get_weather")
+    expect(header?.textContent).toContain("×2")
+    expect(header?.textContent).not.toContain("Got weather for Duluth")
+    const labels = [
+      ...container.querySelectorAll(".shiny-chat-tool-call-row__label"),
+    ].map((el) => el.textContent)
+    expect(labels).toEqual(["Got weather for Duluth", "Got weather for Tokyo"])
   })
 
   it('removes the icon entirely when the assistant icon is "" (icon_assistant=False)', () => {
