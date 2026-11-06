@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### New features
 
 * Text file attachments now use the model provider's native document support when available. (#415)
+* Tool call results that render HTML now syntax-highlight code blocks, matching how code looks elsewhere in the chat. (#455)
 * With conversation history enabled, a sent message stays in the (locked) message box until the app has accepted it, and only then moves into the chat. If the app rejects the message ("Message not sent"), it never appears in the chat, and your text and attachments are still in the message box, which becomes editable again. `Chat.update_user_input()` calls that change the message box while a message waits are applied after it is accepted, or discarded if it is not. (#453)
 
 ### Changes
@@ -37,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `Chat.clear_messages()` now raises `ValueError` when conversation history is enabled. Use `await chat.client.new_chat()` to start a new conversation instead. With `history=False` or no client, `clear_messages()` still clears the displayed messages. (#445)
 
 ### Bug fixes
+
+* A multi-call tool group now keeps the tool's definition title after its calls finish, instead of switching to the first call's result title. (#457)
 
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
 

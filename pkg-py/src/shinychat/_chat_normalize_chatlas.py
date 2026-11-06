@@ -292,7 +292,10 @@ class ToolResultDisplay(BaseModel):
     ``label`` and ``value_preview`` are compact, per-call metadata shown in the
     activity row and grouped call list. Use them to distinguish repeated calls
     without opening the card. ``html``, ``markdown``, and ``text`` customize the
-    result body inside the drill-down card. ``open_style="framed"`` opts a
+    result body inside the drill-down card. In ``html``, code blocks tagged
+    with a language class (``<pre><code class="language-r">``) are
+    syntax-highlighted; add a ``nohighlight`` class to a code block to opt
+    out. ``open_style="framed"`` opts a
     substantial rich result into Shiny Chat's expanded frame;
     ``open_style="minimal"`` retains the existing drill-down presentation.
     Framing belongs to the normal tool UI. To replace the card with standalone
