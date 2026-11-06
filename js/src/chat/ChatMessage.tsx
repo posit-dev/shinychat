@@ -2,7 +2,7 @@ import { memo, useMemo, useState, useRef, useCallback, useEffect } from "react"
 import { BlockErrorBoundary } from "./BlockErrorBoundary"
 import {
   deriveToolGroupIdentity,
-  inheritRequestDefinitionIcon,
+  inheritRequestDefinition,
   type ChatMessageData,
   type ContentBlock,
   type RenderBlock,
@@ -41,6 +41,9 @@ import { useAttachmentStaging } from "./useAttachmentStaging"
 import { AttachmentTray } from "./AttachmentTray"
 import { CitationCollectorProvider } from "./citationCollector"
 import { SourcesSummary } from "./SourcesSummary"
+import { FloatingPortal, FloatingArrow } from "@floating-ui/react"
+import { portalTheme } from "./portalTheme"
+import { useTooltip } from "./useTooltip"
 
 type TagComponentMap = Record<string, ComponentType<unknown>>
 
@@ -122,6 +125,57 @@ interface ChatMessageProps {
   thinkingShowAfter?: number
 }
 
+const EDIT_UNAVAILABLE_MESSAGE = "This message can't be edited."
+
+function EditUnavailableButton() {
+  const {
+    open,
+    refs,
+    floatingStyles,
+    context,
+    arrowRef,
+    getReferenceProps,
+    getFloatingProps,
+  } = useTooltip()
+  const portal = portalTheme(refs.domReference.current)
+
+  return (
+    <>
+      <button
+        ref={refs.setReference}
+        type="button"
+        className="shiny-chat-edit-btn"
+        aria-disabled="true"
+        aria-label="Edit message"
+        dangerouslySetInnerHTML={{ __html: pencil }}
+        {...getReferenceProps()}
+      />
+      {open && (
+        <FloatingPortal>
+          <div
+            ref={refs.setFloating}
+            className="shiny-chat-tooltip shiny-floating-overlay"
+            style={{ ...portal.style, ...floatingStyles }}
+            data-bs-theme={portal.theme}
+            {...getFloatingProps()}
+          >
+            <div className="shiny-chat-tooltip__inner">
+              {EDIT_UNAVAILABLE_MESSAGE}
+            </div>
+            <FloatingArrow
+              ref={arrowRef}
+              context={context}
+              width={12.8}
+              height={6.4}
+              className="shiny-chat-tooltip__arrow"
+            />
+          </div>
+        </FloatingPortal>
+      )}
+    </>
+  )
+}
+
 export const ChatMessage = memo(function ChatMessage({
   message,
   index,
@@ -146,7 +200,7 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
   const toolGrouping = useToolGrouping()
-  const { supersededRequests, requestDefinitionIcons } = useChatToolState()
+  const { supersededRequests, requestDefinitions } = useChatToolState()
   const [lightbox, setLightbox] = useState<{
     src: string
     name: string
@@ -159,11 +213,10 @@ export const ChatMessage = memo(function ChatMessage({
   const showEdit = isEditing && (!readOnly || retainedEdit)
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
-  const canEdit =
-    !!onEdit &&
-    !disabled &&
-    !readOnly &&
-    message.exchange?.parent_editable !== false
+  const canStartEdit = !!onEdit && !disabled && !readOnly
+  const parentEditable = message.exchange?.parent_editable !== false
+  const canEdit = canStartEdit && parentEditable
+  const showEditUnavailable = canStartEdit && !parentEditable
   const showPreparationFailure =
     isUser &&
     message.exchange?.status === "error" &&
@@ -198,7 +251,7 @@ export const ChatMessage = memo(function ChatMessage({
                   c.status === "running" && supersededRequests.has(c.requestId)
                 ),
             )
-            .map((c) => inheritRequestDefinitionIcon(c, requestDefinitionIcons))
+            .map((c) => inheritRequestDefinition(c, requestDefinitions))
           const changed =
             calls.length !== g.calls.length ||
             calls.some((call, index) => call !== g.calls[index])
@@ -210,7 +263,7 @@ export const ChatMessage = memo(function ChatMessage({
       if (groups.length > 0) out.push({ block: { ...block, groups }, index })
     })
     return out
-  }, [blocks, supersededRequests, requestDefinitionIcons])
+  }, [blocks, supersededRequests, requestDefinitions])
 
   // Hidden thinking must not make an otherwise-empty assistant message look
   // complete. Re-render at the next streaming threshold so the icon and
@@ -246,7 +299,9 @@ export const ChatMessage = memo(function ChatMessage({
     isUser &&
     !disabled &&
     !showEdit &&
-    (canEdit || (!!onNavigate && (message.siblings?.total ?? 0) > 1))
+    (canEdit ||
+      showEditUnavailable ||
+      (!!onNavigate && (message.siblings?.total ?? 0) > 1))
 
   const [touchRevealed, setTouchRevealed] = useState(false)
   const touchHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -787,6 +842,7 @@ export const ChatMessage = memo(function ChatMessage({
       {isUser &&
         !showEdit &&
         (canEdit ||
+          showEditUnavailable ||
           (message.siblings && message.siblings.total > 1) ||
           (message.exchange?.retryable && onRetry && !readOnly) ||
           showResponseError) && (
@@ -839,6 +895,7 @@ export const ChatMessage = memo(function ChatMessage({
                 dangerouslySetInnerHTML={{ __html: pencil }}
               />
             )}
+            {showEditUnavailable && <EditUnavailableButton />}
             {message.exchange?.retryable && onRetry && !readOnly && (
               <button
                 type="button"

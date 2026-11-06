@@ -20,7 +20,11 @@ import {
   structuredBlockToLoop,
   supersededRequestIds,
 } from "./tool-model"
-import type { ToolLoopBlock, ToolGrouping } from "./tool-model"
+import type {
+  RequestDefinition,
+  ToolLoopBlock,
+  ToolGrouping,
+} from "./tool-model"
 import {
   appendWebActivityBlock,
   asWebActivityWireBlock,
@@ -36,12 +40,13 @@ import type { HtmlBlock } from "./html-block-model"
 
 export {
   deriveToolGroupIdentity,
-  inheritRequestDefinitionIcon,
-  requestDefinitionIcons,
+  inheritRequestDefinition,
+  requestDefinitions,
   structuredBlockToLoop,
   supersededRequestIds,
 } from "./tool-model"
 export type {
+  RequestDefinition,
   ToolCallGroup,
   ToolCallItem,
   ToolCallSegment,
@@ -158,12 +163,13 @@ export interface ChatInputState {
  * Tool state shared with every message through context.
  *
  * `supersededRequests` is `supersededRequestIds`, derived from the
- * transcript. `requestDefinitionIcons` carries definition identity into
- * results that omit it. See their source functions for the derivation rules.
+ * transcript. `requestDefinitions` carries definition identity (title, icon)
+ * into results that omit it. See their source functions for the derivation
+ * rules.
  */
 export interface ChatToolState {
   supersededRequests: Set<string>
-  requestDefinitionIcons: ReadonlyMap<string, string>
+  requestDefinitions: ReadonlyMap<string, RequestDefinition>
 }
 
 export interface ChatHistoryState {

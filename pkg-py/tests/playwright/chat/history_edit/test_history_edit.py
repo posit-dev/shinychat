@@ -7,7 +7,7 @@ from shinychat.playwright import ChatController
 HERE = Path(__file__).parent
 
 
-def test_invalid_parent_hides_edit_but_valid_parent_stays_editable(
+def test_invalid_parent_disables_edit_but_valid_parent_stays_editable(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
@@ -23,8 +23,11 @@ def test_invalid_parent_hides_edit_but_valid_parent_stays_editable(
     expect(chat.loc_input).to_be_editable(timeout=30_000)
     first_user = page.locator(".shiny-chat-user-message").first
     first_user.hover()
-    expect(first_user.get_by_role("button", name="Edit message")).to_have_count(
-        0
+    first_edit = first_user.get_by_role("button", name="Edit message")
+    expect(first_edit).to_have_attribute("aria-disabled", "true")
+    first_edit.hover()
+    expect(page.get_by_role("tooltip")).to_have_text(
+        "This message can't be edited."
     )
 
     # The failed root and first settlement remain invalid. Once capture works,
@@ -37,7 +40,7 @@ def test_invalid_parent_hides_edit_but_valid_parent_stays_editable(
     second_user = page.locator(".shiny-chat-user-message").nth(1)
     expect(
         second_user.get_by_role("button", name="Edit message")
-    ).to_have_count(0)
+    ).to_have_attribute("aria-disabled", "true")
 
     chat.set_user_input("editable input")
     chat.send_user_input(method="enter")
@@ -52,9 +55,9 @@ def test_invalid_parent_hides_edit_but_valid_parent_stays_editable(
     expect(
         third_user.get_by_role("textbox", name="Chat message")
     ).to_be_visible()
-    expect(first_user.get_by_role("button", name="Edit message")).to_have_count(
-        0
-    )
+    expect(
+        first_user.get_by_role("button", name="Edit message")
+    ).to_have_attribute("aria-disabled", "true")
 
 
 def test_edit_creates_branch_and_regenerates(

@@ -1,7 +1,8 @@
-import { memo, useRef } from "react"
+import { memo, useMemo, useRef } from "react"
 import { ToolCard } from "./ToolCard"
 import { RawHTML } from "./RawHTML"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { highlightHtmlCode } from "../markdown/highlightHtmlCode"
 import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 import { exclamationCircleFill, filePdfFill } from "../utils/icons"
 import { useFullscreen } from "./useFullscreen"
@@ -192,10 +193,18 @@ export function ToolResultValue({
 }): React.ReactNode {
   const displayValue = value || "[Empty result]"
 
+  // HTML values can embed multi-MB base64 images; keep the parse/highlight
+  // round-trip out of unrelated re-renders.
+  const highlightedHtml = useMemo(
+    () =>
+      valueType === "html" ? highlightHtmlCode(displayValue) : displayValue,
+    [valueType, displayValue],
+  )
+
   let resultContent: React.ReactNode
 
   if (valueType === "html") {
-    resultContent = <RawHTML html={displayValue} />
+    resultContent = <RawHTML html={highlightedHtml} />
   } else if (valueType === "text") {
     resultContent = <p>{displayValue}</p>
   } else if (valueType === "content_extra") {
