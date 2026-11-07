@@ -11,7 +11,7 @@ tool_result_display(
   markdown = NULL,
   text = NULL,
   show_request = TRUE,
-  open = FALSE,
+  open = NULL,
   full_screen = FALSE,
   footer = NULL,
   details = NULL,
@@ -46,7 +46,9 @@ result content in the drill-down card).}
 card.}
 
 \item{open}{Whether to open the drill-down card by default when the result
-settles.}
+settles. The default, \code{NULL}, opens the card when a visual is showing
+(an image in the result or in custom display content) and collapses it
+otherwise; an explicit \code{TRUE} or \code{FALSE} always wins.}
 
 \item{full_screen}{Whether or not to display a fullscreen toggle button on
 the drill-down card.}

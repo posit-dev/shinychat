@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
+* Tool-result cards with a visible image now arrive **open by default — whether the image is in the result itself or in custom display content, with or without display metadata** (covering, for example, querychat's visualize cards), and their request display starts collapsed, so the visual is front and center and the code is one click away. The details disclosure mirrors the policy: closed when an image is showing, open otherwise. Set `open = False` in `ToolResultDisplay()` or use the `basic` tool-display override to opt out. As part of this change, `ToolResultDisplay`'s `open` field is now tri-state: the default `None` applies the content-type policy, while an explicit `True` or `False` always wins.
 * `ToolResultDisplay` gains a `details` slot for a collapsible disclosure in the drill-down card — secondary content, such as executed code, that should stay one click away. Pass content directly (a string renders as Markdown, with language-fenced code blocks syntax-highlighted; use `HTML()` or tags for raw HTML), or a `ToolResultDetails` dict to also set the disclosure `summary` label and initial `open` state. The disclosure renders with the same chrome as the card's "Tool call" section, between the request and result sections.
 * Text file attachments now use the model provider's native document support when available. (#415)
 * Tool call results that render HTML now syntax-highlight code blocks, matching how code looks elsewhere in the chat. (#455)

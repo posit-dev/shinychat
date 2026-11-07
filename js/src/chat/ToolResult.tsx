@@ -77,6 +77,7 @@ export interface ToolResultProps {
   valueType: string
   requestCall?: string
   showRequest?: boolean
+  requestCollapsed?: boolean
   fullScreen?: boolean
   initialExpanded?: boolean
   icon?: string
@@ -97,6 +98,7 @@ export const ToolResult = memo(function ToolResult({
   valueType,
   requestCall,
   showRequest = false,
+  requestCollapsed = false,
   fullScreen = false,
   initialExpanded = false,
   icon: iconProp,
@@ -162,6 +164,7 @@ export const ToolResult = memo(function ToolResult({
         <ToolRequestDetails
           requestCall={requestCall}
           showRequest={showRequest}
+          requestCollapsed={requestCollapsed}
           stopScroll={stopScroll}
         />
         {highlightedDetails && (
@@ -288,10 +291,12 @@ function useSingleCodeBlock(
 function ToolRequestDetails({
   requestCall,
   showRequest,
+  requestCollapsed,
   stopScroll,
 }: {
   requestCall: string | undefined
   showRequest: boolean
+  requestCollapsed: boolean
   stopScroll: ReturnType<typeof useChatStopScroll>
 }): React.ReactNode {
   if (!showRequest || !requestCall) {
@@ -299,7 +304,9 @@ function ToolRequestDetails({
   }
 
   const requestMarkdown = markdownCodeBlock(requestCall, "")
-  const isLongRequest = requestCall.split("\n").length > 2
+  // `requestCollapsed` (client policy: image-bearing results) forces the
+  // collapsed <details> form even for short calls.
+  const isLongRequest = requestCollapsed || requestCall.split("\n").length > 2
 
   return (
     <div className="shiny-tool-result__request">

@@ -92,6 +92,7 @@ function renderLeaf(item: ToolCallItem): ReactNode {
       valueType={item.valueType ?? "markdown"}
       requestCall={item.requestCall}
       showRequest={item.showRequest}
+      requestCollapsed={item.requestCollapsed}
       fullScreen={item.fullScreen}
       initialExpanded
       icon={item.icon}

@@ -660,7 +660,9 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     icon = icon_rendered$html,
     intent = content@request@arguments[["_intent"]],
     show_request = isTRUE(display$show_request %||% TRUE),
-    expanded = isTRUE(display[["open"]]),
+    # Explicit settings only; the client resolves the content-type open
+    # policy from the rendered content.
+    expanded = display[["open"]],
     full_screen = isTRUE(display$full_screen),
     open_style = if (identical(display$open_style, "framed")) {
       "framed"
@@ -717,7 +719,9 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 #' @param show_request Whether to show the tool request inside the drill-down
 #'   card.
 #' @param open Whether to open the drill-down card by default when the result
-#'   settles.
+#'   settles. The default, `NULL`, opens the card when a visual is showing
+#'   (an image in the result or in custom display content) and collapses it
+#'   otherwise; an explicit `TRUE` or `FALSE` always wins.
 #' @param full_screen Whether or not to display a fullscreen toggle button on
 #'   the drill-down card.
 #' @param footer Optional HTML content to display below the drill-down card
@@ -773,7 +777,7 @@ tool_result_display <- function(
   markdown = NULL,
   text = NULL,
   show_request = TRUE,
-  open = FALSE,
+  open = NULL,
   full_screen = FALSE,
   footer = NULL,
   details = NULL,
@@ -996,6 +1000,7 @@ as_tool_result_display <- function(display, error_context = NULL) {
 
   structure(display, class = "shinychat_tool_result_display")
 }
+
 
 get_tool_result_display <- function(content) {
   display <- content@extra$display

@@ -195,8 +195,8 @@ class ToolResultComponent(ToolCardComponent):
     open_style: Literal["minimal", "framed"] = "minimal"
     "Controls whether the result uses the minimal or framed style when open."
 
-    expanded: bool = False
-    "Controls whether the card content is expanded/visible."
+    expanded: Optional[bool] = None
+    "Explicit initial expanded state; unset lets the client's content policy decide."
 
     label: Optional[str] = None
     "A short, per-call identifying value shown alongside the tool title."
@@ -363,7 +363,10 @@ class ToolResultDisplay(BaseModel):
     - ``show_request``:
         Whether to show the tool request inside the drill-down card.
     - ``open``:
-        Whether the drill-down card is expanded by default.
+        Whether the drill-down card is expanded by default. The default,
+        ``None``, expands the card when a visual is showing (an image in
+        the result or in custom display content) and collapses it
+        otherwise; an explicit ``True`` or ``False`` always wins.
     - ``full_screen``:
         Whether to display a fullscreen toggle button on the drill-down card.
     - ``open_style``:
@@ -396,7 +399,7 @@ class ToolResultDisplay(BaseModel):
     icon: TagChild = None
     html: TagChild = None
     show_request: bool = True
-    open: bool = False
+    open: Optional[bool] = None
     full_screen: bool = False
     open_style: Literal["minimal", "framed"] = "minimal"
     markdown: Optional[str] = None
@@ -469,8 +472,8 @@ class ToolResultDetails(TypedDict, total=False):
     ``HTML()`` or pass tags for raw HTML. Code blocks fenced with a language
     (e.g. \"```r\") are syntax-highlighted. ``summary`` is the disclosure
     label (default ``"Details"``). ``open`` is the initial disclosure state;
-    unset lets the content-type policy decide (closed when the result
-    contains an image, open otherwise).
+    unset lets the content-type policy decide (closed when a visual is
+    showing, open otherwise).
     """
 
     content: TagChild
@@ -611,6 +614,8 @@ def tool_result_contents(
         icon=icon,
         intent=intent,
         show_request=display.show_request,
+        # Explicit settings only; the client resolves the content-type
+        # open policy from the rendered content.
         expanded=display.open,
         footer=display.footer,
         details=details_content,
@@ -703,8 +708,8 @@ def tool_result_block(
         block["value_preview"] = component.value_preview
     if component.grouping is not None:
         block["grouping"] = component.grouping
-    if component.expanded:
-        block["expanded"] = True
+    if component.expanded is not None:
+        block["expanded"] = component.expanded
     if component.full_screen:
         block["full_screen"] = True
     if component.custom_display:
@@ -801,7 +806,9 @@ def get_tool_result_display(
     if not isinstance(x.extra, dict) or tool_display_override() == "basic":
         return ToolResultDisplay()
 
-    display = x.extra.get("display", ToolResultDisplay())
+    display = x.extra.get("display")
+    if display is None:
+        return ToolResultDisplay()
 
     if isinstance(display, ToolResultDisplay):
         return display
