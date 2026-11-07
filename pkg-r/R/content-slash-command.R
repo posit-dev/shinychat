@@ -45,7 +45,8 @@
 #' @param command The slash command name (without the leading `/`).
 #' @param user_text The text the user typed after the command name. Defaults
 #'   to `""`.
-#' @param text The text sent to the LLM. When constructed by the chat module,
+#' @param ... Arguments passed on to [ellmer::ContentText], including `text`,
+#'   the text sent to the LLM. When constructed by the chat module,
 #'   this defaults to a descriptive string like
 #'   `"The user entered the /greet slash command with arguments: world"`.
 #'   Set it in the handler to control what the LLM actually sees.

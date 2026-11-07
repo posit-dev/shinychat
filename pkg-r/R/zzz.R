@@ -1,6 +1,10 @@
 .onLoad <- function(libname, pkgname) {
   rlang::run_on_load()
-  S7::methods_register()
+  if ("S7_on_load" %in% getNamespaceExports("S7")) {
+    S7::S7_on_load()
+  } else {
+    S7::methods_register()
+  }
   shiny::registerInputHandler(
     "shinychat.userInput",
     user_input_contents,
@@ -74,4 +78,14 @@ tag_require <- function(tag, version = 5, caller = "") {
     )
   }
   tag_req(tag, version, caller)
+}
+
+.onUnload <- function(...) {
+  if ("S7_on_unload" %in% getNamespaceExports("S7")) {
+    S7::S7_on_unload()
+  }
+}
+
+if ("S7_on_build" %in% getNamespaceExports("S7")) {
+  S7::S7_on_build()
 }
