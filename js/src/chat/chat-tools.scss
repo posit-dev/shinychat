@@ -311,9 +311,81 @@
   flex: none;
 }
 
+// The "Code" disclosure inside a tool-result card (and the rarer "Tool call"
+// one). Default `<details>` chrome (list-item triangle, plain text) clashes
+// with the card's other disclosure rows, so restyle the summary as the same
+// kind of subordinate row: muted label, rotating chevron, hover wash.
+.shiny-tool-result__details,
+.shiny-tool-result__request {
+  > details {
+    > summary {
+      display: flex;
+      align-items: center;
+      gap: 0.4em;
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+      width: fit-content;
+      padding: 0.15rem 0.4rem;
+      border-radius: 6px;
+      color: var(--bs-secondary-color);
+      font-weight: 500;
+
+      &::marker,
+      &::-webkit-details-marker {
+        display: none;
+      }
+
+      &:hover,
+      &:focus-visible {
+        background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+        color: var(--bs-emphasis-color);
+      }
+    }
+
+    &[open] > summary {
+      margin-bottom: 0.5rem;
+    }
+  }
+
+  .shiny-tool-result__details-chevron {
+    display: block;
+    flex: none;
+    transition: transform 0.2s ease;
+
+    &[data-expanded] {
+      transform: rotate(90deg);
+    }
+  }
+}
+
+.shiny-tool-result__details {
+  // Collapsed, the row is just a label over the output: pull the next
+  // section up from the card body's gap to the open state's 0.5rem.
+  &:has(> details:not([open])) {
+    margin-bottom: calc(0.5rem - var(--bslib-spacer, 1rem));
+  }
+}
+
 .shiny-chat-tool-image {
   max-width: 100%;
   border-radius: var(--bs-border-radius);
+}
+
+// Mixed output (text, image, text) stacks edge to edge as one stream, so only
+// the stack's outer corners are rounded; per-piece rounding notches the seams.
+.shiny-chat-content-extra > :is(pre, img) {
+  border-radius: 0;
+
+  &:first-child {
+    border-top-left-radius: var(--bs-border-radius, 4px);
+    border-top-right-radius: var(--bs-border-radius, 4px);
+  }
+
+  &:last-child {
+    border-bottom-left-radius: var(--bs-border-radius, 4px);
+    border-bottom-right-radius: var(--bs-border-radius, 4px);
+  }
 }
 
 // Condensed tool view (Tier-1 group row / Tier-2 call rows / Tier-3 leaf

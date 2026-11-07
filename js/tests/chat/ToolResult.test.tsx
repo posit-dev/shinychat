@@ -94,6 +94,91 @@ describe("ToolResult", () => {
     expect(container.textContent).toContain("my_tool(x = 1)")
   })
 
+  it("renders the details slot as a collapsible disclosure above the result body", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value="42"
+        valueType="text"
+        requestCall="my_tool(x = 1)"
+        showRequest={true}
+        initialExpanded={true}
+        details="<pre><code>1 + 1</code></pre>"
+        detailsSummary="Code"
+        detailsOpen={false}
+      />,
+    )
+    const wrapper = container.querySelector(".shiny-tool-result__details")
+    expect(wrapper).toBeTruthy()
+    const details = wrapper!.querySelector("details") as HTMLDetailsElement
+    expect(details).toBeTruthy()
+    expect(details.open).toBe(false)
+    expect(details.querySelector("summary")?.textContent).toBe("Code")
+    expect(details.textContent).toContain("1 + 1")
+
+    // The slot sits above the result body (below the request section).
+    const request = container.querySelector(".shiny-tool-result__request")
+    const result = container.querySelector(".shiny-tool-result__result")
+    expect(request).toBeTruthy()
+    expect(result).toBeTruthy()
+    expect(
+      request!.compareDocumentPosition(wrapper!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      wrapper!.compareDocumentPosition(result!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it("honors detailsOpen and defaults the summary label to 'Details'", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value="42"
+        valueType="text"
+        details="<pre><code>1 + 1</code></pre>"
+        detailsOpen={true}
+      />,
+    )
+    const details = container.querySelector(
+      ".shiny-tool-result__details details",
+    ) as HTMLDetailsElement
+    expect(details.open).toBe(true)
+    expect(details.querySelector("summary")?.textContent).toBe("Details")
+  })
+
+  it("highlights language-tagged code blocks in the details slot", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value="42"
+        valueType="text"
+        details='<pre><code class="language-r">plot(1:3)</code></pre>'
+      />,
+    )
+    const code = container.querySelector(".shiny-tool-result__details code")
+    expect(code?.className).toContain("hljs")
+  })
+
+  it("renders markdown-type details through the markdown pipeline", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value="42"
+        valueType="text"
+        details="Some **bold** text"
+        detailsType="markdown"
+      />,
+    )
+    const slot = container.querySelector(".shiny-tool-result__details")
+    expect(slot?.querySelector("strong")?.textContent).toBe("bold")
+  })
+
   it("highlights language-tagged code blocks in html values", () => {
     const { container } = render(
       <ToolResult

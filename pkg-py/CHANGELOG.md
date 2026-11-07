@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
+* `ToolResultDisplay` gains a `details` slot for a collapsible disclosure in the drill-down card — secondary content, such as executed code, that should stay one click away. Pass content directly (a string renders as Markdown, with language-fenced code blocks syntax-highlighted; use `HTML()` or tags for raw HTML), or a `ToolResultDetails` dict to also set the disclosure `summary` label and initial `open` state. The disclosure renders with the same chrome as the card's "Tool call" section, between the request and result sections.
 * Text file attachments now use the model provider's native document support when available. (#415)
 * Tool call results that render HTML now syntax-highlight code blocks, matching how code looks elsewhere in the chat. (#455)
 * With conversation history enabled, a sent message stays in the (locked) message box until the app has accepted it, and only then moves into the chat. If the app rejects the message ("Message not sent"), it never appears in the chat, and your text and attachments are still in the message box, which becomes editable again. `Chat.update_user_input()` calls that change the message box while a message waits are applied after it is accepted, or discarded if it is not. (#453)

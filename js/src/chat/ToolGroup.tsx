@@ -96,6 +96,10 @@ function renderLeaf(item: ToolCallItem): ReactNode {
       initialExpanded
       icon={item.icon}
       footer={item.footer}
+      details={item.details}
+      detailsType={item.detailsType}
+      detailsSummary={item.detailsSummary}
+      detailsOpen={item.detailsOpen}
       label={item.label}
     />
   )

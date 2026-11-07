@@ -22,7 +22,7 @@ from .._history_types import (
 from .._page_chat import ChatDrawer, ChatNavPanel, ChatSidebar
 
 try:
-    from .._chat_normalize_chatlas import ToolResultDisplay
+    from .._chat_normalize_chatlas import ToolResultDetails, ToolResultDisplay
 
     ToolResultDisplay.model_rebuild()
 except ImportError:
@@ -34,6 +34,7 @@ except ImportError:
             )
 
     ToolResultDisplay = MockToolResultDisplay
+    ToolResultDetails = dict
 
 
 __all__ = [
@@ -51,6 +52,7 @@ __all__ = [
     "ConversationRecordV2",
     "ConversationStore",
     "FileConversationStore",
+    "ToolResultDetails",
     "ToolResultDisplay",
     "ChatDrawer",
     "ChatNavPanel",

@@ -58,6 +58,10 @@ export interface ToolCallItem {
   /** Source content block index, paired with resolveIndex for ordering. */
   resolveBlock?: number
   footer?: string
+  details?: string
+  detailsType?: "html" | "markdown"
+  detailsSummary?: string
+  detailsOpen?: boolean
   /** Raw arguments JSON from the request element. */
   arguments?: string
 }
@@ -267,6 +271,11 @@ export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
   if (block.custom_display !== undefined)
     call.customDisplay = block.custom_display
   if (block.footer !== undefined) call.footer = block.footer
+  if (block.details !== undefined) call.details = block.details
+  if (block.details_type !== undefined) call.detailsType = block.details_type
+  if (block.details_summary !== undefined)
+    call.detailsSummary = block.details_summary
+  if (block.details_open !== undefined) call.detailsOpen = block.details_open
   if (block.grouping !== undefined) call.grouping = block.grouping
   return call
 }

@@ -1,5 +1,6 @@
-import { memo, useMemo, useRef } from "react"
+import { memo, useMemo, useRef, useState } from "react"
 import { ToolCard } from "./ToolCard"
+import { ChevronIcon } from "./ChevronIcon"
 import { RawHTML } from "./RawHTML"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { highlightHtmlCode } from "../markdown/highlightHtmlCode"
@@ -52,7 +53,7 @@ function ContentExtraText({
   }
   return (
     <MarkdownContent
-      content={markdownCodeBlock(value, "text")}
+      content={markdownCodeBlock(value.trimEnd(), "text")}
       contentType="markdown"
       streaming={false}
     />
@@ -73,6 +74,10 @@ export interface ToolResultProps {
   initialExpanded?: boolean
   icon?: string
   footer?: string
+  details?: string
+  detailsType?: "html" | "markdown"
+  detailsSummary?: string
+  detailsOpen?: boolean
 }
 
 export const ToolResult = memo(function ToolResult({
@@ -89,6 +94,10 @@ export const ToolResult = memo(function ToolResult({
   initialExpanded = false,
   icon: iconProp,
   footer,
+  details,
+  detailsType,
+  detailsSummary,
+  detailsOpen,
 }: ToolResultProps) {
   const cardRef = useRef<HTMLDivElement>(null)
   const { enterFullscreen, overlay } = useFullscreen(cardRef)
@@ -97,6 +106,21 @@ export const ToolResult = memo(function ToolResult({
   const isError = status === "error"
   const classStatus = isError ? "text-danger" : ""
   const icon = isError ? exclamationCircleFill : iconProp
+
+  const isMarkdownDetails = detailsType === "markdown"
+
+  // Same treatment as html result bodies: language-tagged code blocks get
+  // highlighted once, memoized so disclosure toggles don't re-parse. The
+  // markdown flavor highlights through MarkdownContent's own pipeline.
+  const highlightedDetails = useMemo(
+    () =>
+      details && !isMarkdownDetails ? highlightHtmlCode(details) : details,
+    [details, isMarkdownDetails],
+  )
+
+  // The `<details>` is uncontrolled (its `open` attr is only the initial
+  // state), so mirror toggles into state for the chevron's rotation.
+  const [detailsExpanded, setDetailsExpanded] = useState(detailsOpen ?? false)
 
   return (
     <>
@@ -115,7 +139,7 @@ export const ToolResult = memo(function ToolResult({
         cardRef={cardRef}
         // Body errors can derive from any of these inputs. The boundary must
         // retry when any of them changes, not just the result value.
-        resetKey={`${valueType}${showRequest}${requestCall}${value}`}
+        resetKey={`${valueType}${showRequest}${requestCall}${value}${details}${detailsType}`}
       >
         {/* A component (not an inline call) so a malformed requestCall throws
             below ToolCard's body boundary and the card header survives. */}
@@ -124,6 +148,34 @@ export const ToolResult = memo(function ToolResult({
           showRequest={showRequest}
           stopScroll={stopScroll}
         />
+        {highlightedDetails && (
+          <div className="shiny-tool-result__details">
+            <details
+              open={detailsOpen || undefined}
+              onToggle={(e) => {
+                setDetailsExpanded(e.currentTarget.open)
+                stopScroll?.()
+              }}
+            >
+              <summary>
+                <ChevronIcon
+                  className="shiny-tool-result__details-chevron"
+                  expanded={detailsExpanded}
+                />
+                {detailsSummary ?? "Details"}
+              </summary>
+              {isMarkdownDetails ? (
+                <MarkdownContent
+                  content={highlightedDetails}
+                  contentType="markdown"
+                  streaming={false}
+                />
+              ) : (
+                <RawHTML html={highlightedDetails} />
+              )}
+            </details>
+          </div>
+        )}
         <ToolResultValue
           value={value}
           valueType={valueType}
@@ -191,7 +243,10 @@ export function ToolResultValue({
   valueType: string
   showRequest: boolean
 }): React.ReactNode {
-  const displayValue = value || "[Empty result]"
+  // Console results conventionally end with a newline (e.g. R's `cat()`);
+  // inside a fenced block it renders as a trailing blank line that reads as
+  // double bottom padding, so drop it for display.
+  const displayValue = value.trimEnd() || "[Empty result]"
 
   // HTML values can embed multi-MB base64 images; keep the parse/highlight
   // round-trip out of unrelated re-renders.

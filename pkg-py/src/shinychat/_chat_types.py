@@ -98,6 +98,10 @@ class ToolResultBlock(TypedDict):
     full_screen: NotRequired[bool]
     custom_display: NotRequired[bool]
     footer: NotRequired[str]
+    details: NotRequired[str]
+    details_type: NotRequired[Literal["html", "markdown"]]
+    details_summary: NotRequired[str]
+    details_open: NotRequired[bool]
 
 
 @with_config(ConfigDict(extra="allow"))

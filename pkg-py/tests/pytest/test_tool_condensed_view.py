@@ -24,12 +24,21 @@ from shinychat import chat_ui, message_content, message_content_chunk
 from shinychat._chat_normalize_chatlas import (
     ShinyToolCardMessage,
     ToolRequestComponent,
+    ToolResultDetails,
     ToolResultDisplay,
     tool_request_contents,
+    tool_result_block,
     tool_result_contents,
 )
 from shinychat._chat_types import ToolResultBlock
 from shinychat.types import ChatMessage
+
+
+def _result_block(result: ContentToolResult) -> ToolResultBlock:
+    component = tool_result_contents(result)
+    assert component is not None
+    block, _deps = tool_result_block(component)
+    return block
 
 
 def _tool(annotations: dict[str, Any] | None = None) -> Tool:
@@ -1137,3 +1146,96 @@ async def test_append_message_includes_tool_request_block_in_segments() -> None:
     assert all(
         "<shiny-tool-request" not in s["content"] for s in string_segments
     )
+
+
+# ---------------------------------------------------------------------------
+# Collapsible details slot (`details`)
+# ---------------------------------------------------------------------------
+
+
+def test_tool_result_details_slot_serializes():
+    display = ToolResultDisplay(
+        details={
+            "content": HTML("<pre><code>1 + 1</code></pre>"),
+            "summary": "Code",
+        }
+    )
+    result = _result(_request(), extra={"display": display})
+    block = _result_block(result)
+    assert block.get("details") == "<pre><code>1 + 1</code></pre>"
+    # HTML content leaves the flavor at the client's default ("html").
+    assert "details_type" not in block
+    assert block.get("details_summary") == "Code"
+    assert "details_open" not in block
+
+
+def test_tool_result_details_open_serializes():
+    display = ToolResultDisplay(
+        details={"content": HTML("<pre><code>1 + 1</code></pre>"), "open": True}
+    )
+    result = _result(_request(), extra={"display": display})
+    block = _result_block(result)
+    assert block.get("details_open") is True
+
+
+def test_details_bare_string_ships_as_markdown():
+    display = ToolResultDisplay(details="```r\n1 + 1\n```")
+    result = _result(_request(), extra={"display": display})
+    block = _result_block(result)
+    # Markdown renders client-side, like the result body's markdown.
+    assert block.get("details") == "```r\n1 + 1\n```"
+    assert block.get("details_type") == "markdown"
+
+
+def test_details_tag_content_renders_as_html():
+    display = ToolResultDisplay(details=Tag("pre", "1 + 1"))
+    result = _result(_request(), extra={"display": display})
+    block = _result_block(result)
+    assert block.get("details") == "<pre>1 + 1</pre>"
+    assert "details_type" not in block
+
+
+def test_details_rejects_unknown_keys():
+    with pytest.raises(Exception, match="summray"):
+        ToolResultDisplay(details={"content": "x", "summray": "Code"})  # type: ignore[typeddict-unknown-key]
+
+
+def test_details_rejects_dict_without_content():
+    # Parity with R, which warns and drops a list-form details lacking
+    # content; Python raises (its raise-on-invalid style). Without this a
+    # details_summary could ship with no details body.
+    with pytest.raises(Exception, match="content"):
+        ToolResultDisplay(details={"summary": "Code"})
+
+
+def test_details_survives_serialization_round_trip():
+    display = ToolResultDisplay(
+        details={
+            "content": HTML("<pre>x</pre>"),
+            "summary": "Code",
+            "open": False,
+        }
+    )
+    restored = ToolResultDisplay(**display.model_dump(mode="json"))
+    details = cast("ToolResultDetails", restored.details)
+    # Serialized HTML restores as a TagList, like the other HTML fields.
+    assert isinstance(details.get("content"), TagList)
+    assert details.get("summary") == "Code"
+    assert details.get("open") is False
+
+    result = _result(_request(), extra={"display": restored})
+    block = _result_block(result)
+    assert block.get("details") == "<pre>x</pre>"
+    assert block.get("details_summary") == "Code"
+    assert block.get("details_open") is False
+
+
+def test_details_markdown_round_trips_as_markdown():
+    # Markdown ships to the client as source text, so it serializes as a
+    # plain string and restores with its flavor intact.
+    display = ToolResultDisplay(details="**x**")
+    restored = ToolResultDisplay(**display.model_dump(mode="json"))
+    result = _result(_request(), extra={"display": restored})
+    block = _result_block(result)
+    assert block.get("details") == "**x**"
+    assert block.get("details_type") == "markdown"

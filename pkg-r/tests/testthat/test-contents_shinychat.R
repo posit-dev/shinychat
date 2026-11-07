@@ -483,6 +483,99 @@ test_that("get_tool_result_display handles invalid formats", {
   )
 })
 
+test_that("tool_result_display details slot reaches the tool card", {
+  local_shinychat_tool_display(opt = "rich")
+  display <- tool_result_display(
+    details = list(
+      content = htmltools::HTML("<pre><code>1 + 1</code></pre>"),
+      summary = "Code"
+    )
+  )
+  result <- new_tool_result(value = "2", extra = list(display = display))
+  block <- contents_shinychat(result)
+  expect_identical(block$details, "<pre><code>1 + 1</code></pre>")
+  # HTML content leaves the flavor at the client's default ("html").
+  expect_null(block$details_type)
+  expect_identical(block$details_summary, "Code")
+  expect_null(block$details_open)
+
+  open <- tool_result_display(
+    details = list(
+      content = htmltools::HTML("<pre><code>1 + 1</code></pre>"),
+      open = TRUE
+    )
+  )
+  block <- contents_shinychat(
+    new_tool_result(value = "2", extra = list(display = open))
+  )
+  expect_true(block$details_open)
+})
+
+test_that("details bare strings ship as markdown; tags render as HTML", {
+  local_shinychat_tool_display(opt = "rich")
+
+  md <- tool_result_display(details = "```r\n1 + 1\n```")
+  block <- contents_shinychat(
+    new_tool_result(value = "2", extra = list(display = md))
+  )
+  # Markdown renders client-side, like the result body's markdown.
+  expect_identical(block$details, "```r\n1 + 1\n```")
+  expect_identical(block$details_type, "markdown")
+
+  tag <- tool_result_display(details = htmltools::tags$pre("1 + 1"))
+  block <- contents_shinychat(
+    new_tool_result(value = "2", extra = list(display = tag))
+  )
+  expect_identical(block$details, "<pre>1 + 1</pre>")
+  expect_null(block$details_type)
+})
+
+test_that("details validation warns and drops malformed values", {
+  local_shinychat_tool_display(opt = "rich")
+
+  # Unknown keys in the list form are dropped with a warning.
+  expect_warning(
+    display <- tool_result_display(
+      details = list(
+        content = htmltools::HTML("<pre>x</pre>"),
+        summray = "Code"
+      )
+    ),
+    "summray"
+  )
+  expect_identical(names(display$details), "content")
+
+  # A list form without content is meaningless and degrades to no slot.
+  expect_warning(
+    display <- tool_result_display(details = list(summary = "Code")),
+    "content"
+  )
+  expect_null(display$details)
+
+  # Multi-element character content is not a single markdown string.
+  expect_warning(
+    display <- tool_result_display(details = c("a", "b")),
+    "details"
+  )
+  expect_null(display$details)
+
+  # Wrong-typed summary/open items warn and drop the item, keeping content.
+  expect_warning(
+    display <- tool_result_display(
+      details = list(content = "code", summary = 42)
+    ),
+    "summary"
+  )
+  expect_identical(names(display$details), "content")
+
+  expect_warning(
+    display <- tool_result_display(
+      details = list(content = "code", open = "yes")
+    ),
+    "open"
+  )
+  expect_identical(names(display$details), "content")
+})
 test_that("tool_result_display basic format", {
   local_shinychat_tool_display(opt = "basic")
   result <- new_tool_result(

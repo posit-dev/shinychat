@@ -622,6 +622,13 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 
   icon_rendered <- render_html_field(display$icon %||% annotations$icon)
   footer_rendered <- render_html_field(display$footer)
+  details_content <- display$details$content
+  # A plain string is Markdown (client-rendered); anything else is raw HTML.
+  details_is_md <- is_string(details_content) &&
+    !inherits(details_content, "html")
+  details_rendered <- if (!details_is_md) {
+    render_html_field(details_content)
+  }
 
   value_parts <- tool_result_value(content, display)
   if (identical(value_parts$value_type, "html")) {
@@ -633,7 +640,12 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     value_deps <- list()
   }
 
-  all_deps <- c(icon_rendered$deps, value_deps, footer_rendered$deps)
+  all_deps <- c(
+    icon_rendered$deps,
+    value_deps,
+    footer_rendered$deps,
+    if (!details_is_md) details_rendered$deps
+  )
 
   block <- new_tool_card(
     "tool_result",
@@ -656,6 +668,10 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
       NULL
     },
     footer = footer_rendered$html,
+    details = details_rendered$html %||% details_content,
+    details_type = if (details_is_md) "markdown",
+    details_summary = display$details$summary,
+    details_open = display$details[["open"]],
     grouping = annotations$grouping,
     label = display$label,
     value_preview = display$value_preview,
@@ -706,6 +722,17 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 #'   the drill-down card.
 #' @param footer Optional HTML content to display below the drill-down card
 #'   body.
+#' @param details Content for a collapsible disclosure in the drill-down
+#'   card, placed above the result body (below the request section when
+#'   shown). Intended for secondary content that should be one click away,
+#'   such as executed code. Pass content directly -- a character string
+#'   renders as Markdown (language-fenced code blocks are
+#'   syntax-highlighted); use [htmltools::HTML()] or tags for raw HTML -- or
+#'   a named list with `content` (same rules), `summary` (the disclosure
+#'   label; default `"Details"`), and `open` (initial disclosure state; the
+#'   default closes the disclosure when the result contains an image -- the
+#'   visual is showing, so secondary content stays one click away -- and
+#'   opens it otherwise).
 #' @param label A short, per-call identifying value shown in the activity row
 #'   (e.g. a filename or query). Distinguishes this call from other calls to the
 #'   same tool. Without one, shinychat falls back to the call's own `title`
@@ -749,6 +776,7 @@ tool_result_display <- function(
   open = FALSE,
   full_screen = FALSE,
   footer = NULL,
+  details = NULL,
   label = NULL,
   value_preview = NULL,
   open_style = "minimal"
@@ -764,6 +792,7 @@ tool_result_display <- function(
       open = open,
       full_screen = full_screen,
       footer = footer,
+      details = details,
       label = label,
       value_preview = value_preview,
       open_style = open_style
@@ -782,6 +811,7 @@ tool_result_display_fields <- c(
   "open",
   "full_screen",
   "footer",
+  "details",
   "label",
   "value_preview",
   "open_style"
@@ -789,7 +819,12 @@ tool_result_display_fields <- c(
 
 # Fields that are rendered as HTML and therefore accept a string *or* tag-like
 # content (see `render_html_field()`).
-tool_result_display_html_fields <- c("title", "icon", "html", "footer")
+tool_result_display_html_fields <- c(
+  "title",
+  "icon",
+  "html",
+  "footer"
+)
 
 # Fields that end up as plain-text tag attributes.
 tool_result_display_string_fields <- c(
@@ -801,7 +836,11 @@ tool_result_display_string_fields <- c(
 
 # Fields serialized via `isTRUE()`/`isFALSE()`, where a non-logical value
 # silently produces the opposite of the intended behavior.
-tool_result_display_flag_fields <- c("show_request", "open", "full_screen")
+tool_result_display_flag_fields <- c(
+  "show_request",
+  "open",
+  "full_screen"
+)
 
 is_tag_like <- function(x) {
   inherits(x, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
@@ -810,6 +849,9 @@ is_tag_like <- function(x) {
 tool_result_display_field_is_valid <- function(field, value) {
   if (field %in% tool_result_display_flag_fields) {
     is_bool(value)
+  } else if (identical(field, "details")) {
+    # Canonical form produced by normalize_display_details()
+    is.list(value) && (is_tag_like(value$content) || is_string(value$content))
   } else if (identical(field, "open_style")) {
     is_string(value) && value %in% c("minimal", "framed")
   } else if (field %in% tool_result_display_html_fields) {
@@ -822,6 +864,8 @@ tool_result_display_field_is_valid <- function(field, value) {
 tool_result_display_field_expects <- function(field) {
   if (field %in% tool_result_display_flag_fields) {
     cli::format_inline("{.code TRUE} or {.code FALSE}")
+  } else if (identical(field, "details")) {
+    "a single string, HTML content, or a named list with {.or {.field {c('content', 'summary', 'open')}}} items"
   } else if (identical(field, "open_style")) {
     cli::format_inline("{.code minimal} or {.code framed}")
   } else if (field %in% tool_result_display_html_fields) {
@@ -829,6 +873,66 @@ tool_result_display_field_expects <- function(field) {
   } else {
     "a single string"
   }
+}
+
+# Normalize the `details` field to its canonical list form, warning and
+# degrading to NULL on malformed input. Bare content becomes
+# list(content = ...); plain strings stay Markdown source (the client
+# renders them, like the result body's markdown).
+normalize_display_details <- function(x, error_context = NULL) {
+  if (is.null(x)) {
+    return(NULL)
+  }
+  if (is_tag_like(x) || is_string(x)) {
+    return(list(content = x))
+  }
+  if (!is.list(x)) {
+    cli::cli_warn(c(
+      error_context,
+      "x" = "{.field details} must be a single string, HTML content, or a named list with {.or {.field {c('content', 'summary', 'open')}}} items, not {.obj_type_friendly {x}}; ignoring."
+    ))
+    return(NULL)
+  }
+
+  unknown <- setdiff(names(x), c("content", "summary", "open"))
+  if (length(unknown) > 0) {
+    cli::cli_warn(c(
+      error_context,
+      "x" = "Unrecognized item{?s} {.field {unknown}} in {.field details}; ignoring.",
+      "i" = "Expected items: {.or {.field {c('content', 'summary', 'open')}}}"
+    ))
+    x <- x[setdiff(names(x), unknown)]
+  }
+
+  content <- x[["content"]]
+  if (is.null(content) || !(is_tag_like(content) || is_string(content))) {
+    cli::cli_warn(c(
+      error_context,
+      "x" = "{.field details} requires a {.field content} item: a single string or HTML content, not {.obj_type_friendly {content}}; ignoring {.field details}."
+    ))
+    return(NULL)
+  }
+
+  res <- list(content = content)
+  for (item in intersect(names(x), c("summary", "open"))) {
+    value <- x[[item]]
+    if (item == "summary") {
+      valid <- is_string(value)
+      expects <- "a single string"
+    } else {
+      valid <- is_bool(value)
+      expects <- cli::format_inline("{.code TRUE} or {.code FALSE}")
+    }
+    if (valid) {
+      res[[item]] <- value
+    } else {
+      cli::cli_warn(c(
+        error_context,
+        "x" = "{.field details} item {.field {item}} must be {expects}, not {.obj_type_friendly {value}}; ignoring."
+      ))
+    }
+  }
+  res
 }
 
 # Coerce a bare list (or an existing `shinychat_tool_result_display`) into a
@@ -851,6 +955,11 @@ as_tool_result_display <- function(display, error_context = NULL) {
   }
 
   display <- display[!map_lgl(display, is.null)]
+
+  if ("details" %in% names(display)) {
+    display$details <- normalize_display_details(display$details, error_context)
+    display <- display[!map_lgl(display, is.null)]
+  }
 
   unknown <- setdiff(names(display), tool_result_display_fields)
   if (length(unknown) > 0) {

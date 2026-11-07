@@ -54,8 +54,8 @@ export type ToolRequestBlock = {
 
 /**
  * The result of a completed tool call. HTML fields (`value` with
- * `value_type: "html"`, `title`, `icon`, `footer`) render through RawHTML;
- * text fields are escaped.
+ * `value_type: "html"`, `title`, `icon`, `footer`, `details` with
+ * `details_type: "html"`) render through RawHTML; text fields are escaped.
  */
 export type ToolResultBlock = {
   type: "tool_result"
@@ -86,6 +86,13 @@ export type ToolResultBlock = {
   custom_display?: boolean
   /** HTML → RawHTML */
   footer?: string
+  /** Collapsible disclosure body above the result body; renderer per details_type */
+  details?: string
+  /** Renders `details` through RawHTML (default) or the markdown pipeline */
+  details_type?: "html" | "markdown"
+  /** text → escaped */
+  details_summary?: string
+  details_open?: boolean
 }
 
 /** One source in a `web_search_results` block. */
