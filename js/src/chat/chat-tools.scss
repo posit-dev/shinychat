@@ -1,4 +1,7 @@
 .shiny-tool-card {
+  // Containing block for the absolutely-positioned fullscreen toggle;
+  // don't rely on Bootstrap's `.card` happening to be positioned.
+  position: relative;
   max-height: var(--shiny-tool-card-max-height, 500px);
 
   .tool-title {
@@ -127,7 +130,13 @@
   &:hover, &:focus-within {
     .tool-fullscreen-toggle {
       opacity: 0.6;
+      pointer-events: auto;
     }
+  }
+
+  // No body, nowhere useful to anchor the toggle.
+  > .card-body.collapsed ~ .tool-fullscreen-toggle {
+    display: none;
   }
 
   pre {
@@ -218,10 +227,10 @@
   > .card-body {
     max-height: none;
     overflow: auto;
+  }
 
-    .tool-fullscreen-toggle {
-      display: none;
-    }
+  > .tool-fullscreen-toggle {
+    display: none;
   }
 }
 
@@ -238,6 +247,9 @@
   font-size: 0.8rem;
   cursor: pointer;
   opacity: 0;
+  // Invisible at rest, so don't let it capture clicks meant for whatever
+  // sits beneath it (card footer links, the body's scrollbar).
+  pointer-events: none;
   transition: opacity 0.15s;
 
   &:hover,
