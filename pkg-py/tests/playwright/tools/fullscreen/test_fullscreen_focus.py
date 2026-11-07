@@ -17,6 +17,7 @@ def _add_tool_result(page: Page) -> None:
 
 def _enter_fullscreen(page: Page) -> None:
     """Click the fullscreen toggle to enter fullscreen mode."""
+    page.locator(".shiny-tool-card").hover()
     page.locator(".tool-fullscreen-toggle").click()
     expect(page.locator(".shiny-tool-card[fullscreen]")).to_be_visible(
         timeout=5_000
