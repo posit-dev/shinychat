@@ -2,11 +2,15 @@
 
 Prerequisites:
 
-1. The mcp-console server binary. Build it from
-   https://github.com/posit-dev/mcp-console (`cargo build --release`) and
-   either put it on your PATH or point `MCP_CONSOLE_BIN` at it.
+1. The mcp-console server binary, built from a revision that attaches
+   `send` call metadata to results (posit-dev/mcp-console#215, not yet
+   merged -- check out that PR branch, `cargo build --release`, then either
+   put the binary on your PATH or point `MCP_CONSOLE_BIN` at it).
 2. `ANTHROPIC_API_KEY` set for chatlas.
-3. A chatlas version whose MCP client forwards result `_meta` verbatim.
+3. A chatlas version whose MCP client forwards result `_meta` verbatim
+   (posit-dev/chatlas#489, merged after v0.23.0 -- install from source with
+   `pip install git+https://github.com/posit-dev/chatlas` until the next
+   release).
 
 Run with:
 
@@ -24,6 +28,7 @@ Things to try:
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 
@@ -48,7 +53,6 @@ def _find_binary() -> str:
 BINARY = _find_binary()
 
 chat_client = ChatAnthropic(
-    model="claude-haiku-4-5",
     system_prompt=(
         "You have a `send` tool that executes R code in a persistent session. "
         "Always supply a short one-line `note` naming what the call produces."
@@ -57,21 +61,28 @@ chat_client = ChatAnthropic(
 
 app_ui = ui.page_fillable(chat_ui("chat"), title="MCP Console send cards")
 
+# Holder for the one-per-process registration task (mutated, not rebound, so
+# no `global`). Every browser session runs `server()`, but one mcp-console
+# process serves them all.
+_registration: "list[asyncio.Task[None]]" = []
+
 
 def server(input, output, session):
-    chat = Chat("chat")
-    mcp_registered = False
+    Chat("chat", client=chat_client)
 
-    @chat.on_user_submit
-    async def _(user_input: str):
-        nonlocal mcp_registered
-        if not mcp_registered:
-            await chat_client.register_mcp_tools_stdio_async(
-                command=BINARY, args=["serve"]
+    # MCP stdio sessions are bound to the event loop that opened them, and
+    # Shiny serves each session on the app's loop -- so register here, at
+    # session start, rather than at module level (where the session would
+    # die with its loop before the first tool call). The task completes
+    # long before a user can type and submit a first message.
+    if not _registration:
+        _registration.append(
+            asyncio.get_running_loop().create_task(
+                chat_client.register_mcp_tools_stdio_async(
+                    command=BINARY, args=["serve"]
+                )
             )
-            mcp_registered = True
-        stream = await chat_client.stream_async(user_input, content="all")
-        await chat.append_message_stream(stream)
+        )
 
 
 app = App(app_ui, server)

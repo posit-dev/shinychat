@@ -2,12 +2,14 @@
 #
 # Prerequisites:
 #
-# 1. The mcp-console server binary. Build it from
-#    https://github.com/posit-dev/mcp-console (`cargo build --release`) and
-#    either put it on your PATH or point `MCP_CONSOLE_BIN` at it.
+# 1. The mcp-console server binary, built from a revision that attaches
+#    `send` call metadata to results (posit-dev/mcp-console#215, not yet
+#    merged -- check out that PR branch, `cargo build --release`, then
+#    either put the binary on your PATH or point `MCP_CONSOLE_BIN` at it).
 # 2. `ANTHROPIC_API_KEY` set for ellmer.
 # 3. An mcptools version that forwards result `_meta` verbatim
-#    (posit-dev/mcptools#137).
+#    (posit-dev/mcptools#137, not yet merged -- install the PR branch with
+#    `pak::pak("posit-dev/mcptools#137")`).
 #
 # Run with:
 #
@@ -45,7 +47,6 @@ jsonlite::write_json(
 tools <- mcptools::mcp_tools(config)
 
 client <- chat_anthropic(
-  model = "claude-haiku-4-5",
   system_prompt = paste(
     "You have a `send` tool that executes R code in a persistent session.",
     "Always supply a short one-line `note` naming what the call produces."
