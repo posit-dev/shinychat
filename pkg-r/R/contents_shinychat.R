@@ -1003,7 +1003,11 @@ as_tool_result_display <- function(display, error_context = NULL) {
 
 
 get_tool_result_display <- function(content) {
-  display <- content@extra$display
+  # `[[` matches exactly; `$` would partial-match near-miss keys.
+  display <- content@extra[["display"]]
+  if (is.null(display)) {
+    display <- console_send_display(content@extra, content@request)
+  }
   request <- content@request
 
   if (is.null(display) || opt_shinychat_tool_display() == "basic") {
@@ -1039,7 +1043,9 @@ as_grouping <- function(x) {
 }
 
 tool_result_value <- function(content, display = NULL) {
-  display <- display %||% content@extra$display
+  # `[[` matches exactly, like get_tool_result_display(); `$` would
+  # partial-match near-miss keys.
+  display <- display %||% content@extra[["display"]]
 
   has_display <- !is.null(display) && is.list(display) && length(display) > 0
   use_basic_display <- opt_shinychat_tool_display() == "basic"
@@ -1099,13 +1105,19 @@ is_content <- function(x) {
   S7_inherits(x, ellmer::Content)
 }
 
-as_content_extra_item_or_text <- function(x) {
+as_content_extra_item_or_text <- function(x, text_as_code) {
   if (is_content_extra(x)) {
-    as_content_extra_item(x)
-  } else if (S7_inherits(x, ellmer::ContentText)) {
-    list(type = "text", value = x@text, value_type = "markdown")
+    return(as_content_extra_item(x))
+  }
+  # Text interleaved with binary content is program output, so render it
+  # as code: markdown would collapse aligned columns into prose and turn
+  # 4-space-indented lines (e.g. an R data.frame header) into accidental
+  # code blocks. Pure-text multi-part results keep markdown.
+  value_type <- if (text_as_code) "code" else "markdown"
+  if (S7_inherits(x, ellmer::ContentText)) {
+    list(type = "text", value = x@text, value_type = value_type)
   } else {
-    list(type = "text", value = as.character(x), value_type = "markdown")
+    list(type = "text", value = as.character(x), value_type = value_type)
   }
 }
 
@@ -1134,7 +1146,12 @@ tool_default_display <- function(content) {
   }
 
   if (is.list(value) && some(value, is_content)) {
-    items <- map(value, as_content_extra_item_or_text)
+    text_as_code <- some(value, is_content_extra)
+    items <- map(
+      value,
+      as_content_extra_item_or_text,
+      text_as_code = text_as_code
+    )
     return(
       list(
         value = jsonlite::toJSON(items, auto_unbox = TRUE),

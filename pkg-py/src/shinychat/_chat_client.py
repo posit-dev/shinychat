@@ -155,7 +155,9 @@ class ChatClient:
         if history_controller is not None:
             raise ValueError(
                 "Can't clear a chat with conversation history enabled; use "
-                "`await chat.client.new_chat()` to start a new conversation."
+                "`await chat.client.new_chat()` to start a new conversation, "
+                "then `await chat.append_message()` and "
+                "`chat.client.value.set_turns()` to populate it."
             )
         if client_history in ("set", "append") and messages is None:
             raise ValueError(
