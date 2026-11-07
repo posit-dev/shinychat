@@ -100,7 +100,7 @@ console_code_details <- function(language, request) {
 # drops the redundant label. Deliberately narrow — a noun without a
 # following colon ("R code review") is prose, not a label. Keep in sync
 # with pkg-py's `_chat_console.py`.
-console_note_language_prefix <- "^(?:R|Python|SQL)\\s+(?:code|plots?|scripts?|cells?|chunks?|output)\\s*[:\\-–—]\\s*"
+console_note_language_prefix <- "^(?:R|Python|SQL)\\s+(?:code|plots?|scripts?|cells?|chunks?|output)\\s*[:\\-\u2013\u2014]\\s*"
 
 # A card title from Console's free-form `note`: the first contentful
 # line, minus a redundant language label. NULL when nothing usable
