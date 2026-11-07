@@ -164,6 +164,128 @@ describe("ToolResult", () => {
     expect(code?.className).toContain("hljs")
   })
 
+  it("injects a copy button into html-flavor details <pre> blocks", () => {
+    const html = "<pre><code>1 + 1</code></pre>"
+    const { container, rerender } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value="42"
+        valueType="text"
+        details={html}
+      />,
+    )
+    const pre = container.querySelector(".shiny-tool-result__details pre")
+    const button = pre?.querySelector(".code-copy-button")
+    expect(button).toBeTruthy()
+    expect(button?.getAttribute("aria-label")).toBe("Copy to clipboard")
+
+    // Re-rendering with unchanged html must not stack a second button
+    // (RawHTML re-sets innerHTML; the hook re-runs and the per-pre guard
+    // covers any residual).
+    rerender(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value="42"
+        valueType="text"
+        details={html}
+      />,
+    )
+    expect(
+      container.querySelectorAll(
+        ".shiny-tool-result__details pre .code-copy-button",
+      ),
+    ).toHaveLength(1)
+  })
+
+  describe("details row copy button", () => {
+    const ROW_COPY = ".shiny-tool-result__details > .code-copy-button"
+
+    function renderDetails(
+      details: string,
+      opts: { detailsType?: "html" | "markdown"; detailsOpen?: boolean } = {},
+    ) {
+      return render(
+        <ToolResult
+          toolName="send"
+          status="success"
+          value="42"
+          valueType="text"
+          details={details}
+          detailsSummary="Code"
+          detailsType={opts.detailsType}
+          detailsOpen={opts.detailsOpen ?? true}
+        />,
+      )
+    }
+
+    function toggle(details: HTMLDetailsElement, open: boolean) {
+      details.open = open
+      fireEvent(details, new Event("toggle", { bubbles: false }))
+    }
+
+    it("moves copy into the summary row for a single open code block", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText },
+        configurable: true,
+      })
+      const { container } = renderDetails("<pre><code>1 + 1</code></pre>")
+
+      const wrapper = container.querySelector(".shiny-tool-result__details")!
+      // Keys the CSS that hides the in-block button.
+      expect(wrapper.hasAttribute("data-single-code-block")).toBe(true)
+
+      const button = container.querySelector(ROW_COPY) as HTMLButtonElement
+      expect(button).toBeTruthy()
+      expect(button.getAttribute("aria-label")).toBe("Copy to clipboard")
+      // A sibling of <details>, never nested inside the <summary> toggle.
+      expect(button.closest("summary")).toBeNull()
+
+      const details = wrapper.querySelector("details") as HTMLDetailsElement
+      fireEvent.click(button)
+      await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith("1 + 1"))
+      expect(details.open).toBe(true)
+    })
+
+    it("shows the row button only while the disclosure is open", () => {
+      const { container } = renderDetails("<pre><code>1 + 1</code></pre>", {
+        detailsOpen: false,
+      })
+      expect(container.querySelector(ROW_COPY)).toBeNull()
+
+      const details = container.querySelector(
+        ".shiny-tool-result__details details",
+      ) as HTMLDetailsElement
+      toggle(details, true)
+      expect(container.querySelector(ROW_COPY)).toBeTruthy()
+      toggle(details, false)
+      expect(container.querySelector(ROW_COPY)).toBeNull()
+    })
+
+    it("applies to a single markdown code block too", () => {
+      const { container } = renderDetails("```r\nplot(1:3)\n```", {
+        detailsType: "markdown",
+      })
+      expect(container.querySelector(ROW_COPY)).toBeTruthy()
+    })
+
+    it.each([
+      [
+        "several code blocks",
+        "<pre><code>a</code></pre><pre><code>b</code></pre>",
+      ],
+      ["prose around a code block", "<p>Ran:</p><pre><code>a</code></pre>"],
+      ["no code block", "<p>Just prose</p>"],
+    ])("keeps per-block copy buttons for %s", (_label, html) => {
+      const { container } = renderDetails(html)
+      const wrapper = container.querySelector(".shiny-tool-result__details")!
+      expect(wrapper.hasAttribute("data-single-code-block")).toBe(false)
+      expect(container.querySelector(ROW_COPY)).toBeNull()
+    })
+  })
+
   it("renders markdown-type details through the markdown pipeline", () => {
     const { container } = render(
       <ToolResult

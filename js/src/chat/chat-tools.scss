@@ -142,8 +142,14 @@
   pre {
     margin: 0;
     white-space: pre-wrap;
-    padding: 1em;
+    padding: 0.5em 0.75em;
     border-radius: var(--bs-border-radius, 4px);
+
+    // The hljs theme pads `pre code.hljs` 1em of its own; inside a card the
+    // pre is the single source of padding (the two used to stack to 2em).
+    code.hljs {
+      padding: 0;
+    }
   }
 }
 
@@ -359,7 +365,30 @@
   }
 }
 
+// A single code block's copy button moves from the block's corner up to the
+// right end of the (now full-width) summary row, next to the toggle.
 .shiny-tool-result__details {
+  position: relative;
+
+  > details > summary {
+    width: auto;
+  }
+
+  // Keeps the base button's right margin and padding so its icon shares a
+  // column with the copy buttons on the code blocks below.
+  > .code-copy-button {
+    margin-top: 0;
+    padding-block: 0;
+    // The summary row's height: one line plus its 0.15rem vertical padding.
+    height: calc(1lh + 0.3rem);
+    display: flex;
+    align-items: center;
+  }
+
+  &[data-single-code-block] pre .code-copy-button {
+    display: none;
+  }
+
   // Collapsed, the row is just a label over the output: pull the next
   // section up from the card body's gap to the open state's 0.5rem.
   &:has(> details:not([open])) {
