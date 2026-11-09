@@ -678,3 +678,374 @@ test_that("a managed response still works for clients without the binding", {
     }
   )
 })
+
+# --- Active conversation title ---------------------------------------------
+
+# A store whose writes can be made to fail, to exercise failure ordering.
+CidFlakyStore <- R6::R6Class(
+  "CidFlakyStore",
+  inherit = InMemoryConversationStore,
+  public = list(
+    fail_puts = FALSE,
+    put = function(partition, record) {
+      if (self$fail_puts) {
+        stop("store unavailable")
+      }
+      super$put(partition, record)
+    }
+  )
+)
+
+cid_title <- function(ctrl) shiny::isolate(ctrl$title())
+
+# Records every value an observer sees, so tests can assert on invalidation
+# and not just direct reads.
+cid_watch_title <- function(read, session) {
+  env <- new.env(parent = emptyenv())
+  env$seen <- list()
+  obs <- shiny::observe({
+    env$seen[[length(env$seen) + 1L]] <- list(read())
+  })
+  session$flushReact()
+  env$obs <- obs
+  env
+}
+
+cid_titles_seen <- function(env) {
+  vapply(env$seen, function(x) x[[1L]] %||% NA_character_, character(1))
+}
+
+test_that("title() is NULL for an empty chat and an identified draft", {
+  ctrl <- cid_new_controller()
+  expect_null(cid_title(ctrl))
+
+  ctrl$ensure_conversation_id()
+  expect_false(is.null(shiny::isolate(ctrl$conversation_id())))
+  expect_null(cid_title(ctrl))
+})
+
+test_that("the fallback title appears after the first successful save", {
+  ctrl <- cid_new_controller()
+  ctrl$ensure_conversation_id()
+  ctrl$on_response(cid_make_turns("Tell me about penguins", "Sure"))
+
+  expect_identical(cid_title(ctrl), "Tell me about penguins")
+  expect_identical(cid_title(ctrl), ctrl$record$title)
+})
+
+test_that("a failed first save keeps title() NULL until a save succeeds", {
+  store <- CidFlakyStore$new()
+  ctrl <- cid_new_controller(store = store)
+  ctrl$ensure_conversation_id()
+
+  store$fail_puts <- TRUE
+  expect_error(ctrl$on_response(cid_make_turns("Hi", "Hello")), "unavailable")
+  # The record is activated in memory but was never persisted.
+  expect_null(cid_title(ctrl))
+
+  store$fail_puts <- FALSE
+  turns <- c(cid_make_turns("Hi", "Hello"), cid_make_turns("More", "Sure"))
+  ctrl$on_response(turns)
+  expect_identical(cid_title(ctrl), "Hi")
+})
+
+test_that("a failed first save is recovered by save()", {
+  store <- CidFlakyStore$new()
+  ctrl <- cid_new_controller(store = store)
+
+  store$fail_puts <- TRUE
+  expect_error(ctrl$on_response(cid_make_turns("Hi", "Hello")), "unavailable")
+  expect_null(cid_title(ctrl))
+
+  store$fail_puts <- FALSE
+  expect_true(ctrl$save())
+  expect_identical(cid_title(ctrl), "Hi")
+})
+
+test_that("title() invalidates observers on each title change", {
+  session <- shiny::MockShinySession$new()
+  ctrl <- cid_new_controller(session = session)
+  w <- cid_watch_title(ctrl$title, session)
+
+  ctrl$on_response(cid_make_turns("Hi", "Hello"))
+  session$flushReact()
+  ctrl$rename(ctrl$record$id, "Renamed")
+  session$flushReact()
+  ctrl$new_chat()
+  session$flushReact()
+
+  expect_identical(cid_titles_seen(w), c(NA, "Hi", "Renamed", NA))
+  w$obs$destroy()
+})
+
+test_that("rewriting an unchanged title does not invalidate observers", {
+  session <- shiny::MockShinySession$new()
+  ctrl <- cid_new_controller(session = session)
+  ctrl$on_response(cid_make_turns("Hi", "Hello"))
+  w <- cid_watch_title(ctrl$title, session)
+
+  ctrl$rename(ctrl$record$id, "Hi")
+  ctrl$save()
+  session$flushReact()
+
+  expect_identical(cid_titles_seen(w), "Hi")
+  w$obs$destroy()
+})
+
+test_that("active rename updates title(); inactive rename does not", {
+  ctrl <- cid_new_controller()
+  id1 <- ctrl$ensure_conversation_id()
+  ctrl$on_response(cid_make_turns("One", "Reply"))
+  ctrl$new_chat()
+  ctrl$on_response(cid_make_turns("Two", "Reply"))
+
+  ctrl$rename(id1, "Inactive rename")
+  expect_identical(cid_title(ctrl), "Two")
+
+  ctrl$rename(ctrl$record$id, "  Active   rename ")
+  expect_identical(cid_title(ctrl), "Active rename")
+})
+
+test_that("a failed rename leaves the previous title() in place", {
+  store <- CidFlakyStore$new()
+  ctrl <- cid_new_controller(store = store)
+  ctrl$on_response(cid_make_turns("Hi", "Hello"))
+
+  store$fail_puts <- TRUE
+  expect_error(ctrl$rename(ctrl$record$id, "Nope"), "unavailable")
+  expect_identical(cid_title(ctrl), "Hi")
+})
+
+test_that("restore and switch adopt the target title; new chat and delete clear it", {
+  ctrl <- cid_new_controller()
+  id1 <- ctrl$ensure_conversation_id()
+  ctrl$on_response(cid_make_turns("One", "Reply"))
+  ctrl$new_chat()
+  expect_null(cid_title(ctrl))
+
+  id2 <- ctrl$ensure_conversation_id()
+  ctrl$on_response(cid_make_turns("Two", "Reply"))
+  expect_identical(cid_title(ctrl), "Two")
+
+  ctrl$switch_to(id1)
+  expect_identical(cid_title(ctrl), "One")
+  ctrl$switch_to(id2)
+  expect_identical(cid_title(ctrl), "Two")
+
+  ctrl$delete(id1) # inactive: unchanged
+  expect_identical(cid_title(ctrl), "Two")
+  ctrl$delete(id2)
+  expect_null(cid_title(ctrl))
+})
+
+test_that("activating a saved record publishes its persisted title", {
+  store <- InMemoryConversationStore$new()
+  first <- cid_new_controller(store = store)
+  first$on_response(cid_make_turns("Hi", "Hello"))
+  first$rename(first$record$id, "Persisted")
+
+  second <- cid_new_controller(store = store)
+  second$activate_saved_record(store$get(second$partition, first$record$id))
+  expect_identical(cid_title(second), "Persisted")
+})
+
+test_that("title = NULL still exposes the fallback and never retitles", {
+  ctrl <- cid_new_controller() # history_options(title = NULL)
+  ctrl$on_response(cid_make_turns("Hi", "Hello"))
+  ctrl$on_response(c(
+    cid_make_turns("Hi", "Hello"),
+    cid_make_turns("More", "Sure")
+  ))
+  later::run_now(0.05)
+  expect_identical(cid_title(ctrl), "Hi")
+})
+
+cid_title_controller <- function(store, title_promise) {
+  local_mocked_bindings(
+    generate_title = function(...) title_promise,
+    .env = parent.frame()
+  )
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = mock_chat_client(),
+    options = history_options(store = store, title = function(turns) "x"),
+    session = shiny::MockShinySession$new()
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+  ctrl
+}
+
+test_that("automatic retitle updates title() once it is persisted", {
+  session <- shiny::MockShinySession$new()
+  ctrl <- cid_title_controller(
+    InMemoryConversationStore$new(),
+    promises::promise_resolve("Generated")
+  )
+  ctrl$on_response(cid_make_turns("Hi", "Hello"))
+  expect_identical(cid_title(ctrl), "Hi")
+
+  ctrl$on_response(c(
+    cid_make_turns("Hi", "Hello"),
+    cid_make_turns("More", "Sure")
+  ))
+  wait_until(
+    function() identical(cid_title(ctrl), "Generated"),
+    description = "retitle to publish"
+  )
+  expect_identical(ctrl$record$title, "Generated")
+})
+
+test_that("a user rename wins over an in-flight retitle", {
+  resolve_title <- NULL
+  pending <- promises::promise(function(resolve, reject) {
+    resolve_title <<- resolve
+  })
+  ctrl <- cid_title_controller(InMemoryConversationStore$new(), pending)
+  ctrl$on_response(cid_make_turns("Hi", "Hello"))
+  ctrl$on_response(c(
+    cid_make_turns("Hi", "Hello"),
+    cid_make_turns("More", "Sure")
+  ))
+
+  ctrl$rename(ctrl$record$id, "Mine")
+  resolve_title("Generated")
+  done <- FALSE
+  promises::then(pending, function(...) done <<- TRUE)
+  wait_until(function() done, description = "retitle callback")
+
+  expect_identical(cid_title(ctrl), "Mine")
+  expect_identical(ctrl$record$title, "Mine")
+})
+
+test_that("a failed retitle persistence leaves title() unchanged", {
+  store <- CidFlakyStore$new()
+  resolve_title <- NULL
+  pending <- promises::promise(function(resolve, reject) {
+    resolve_title <<- resolve
+  })
+  ctrl <- cid_title_controller(store, pending)
+  ctrl$on_response(cid_make_turns("Hi", "Hello"))
+  ctrl$on_response(c(
+    cid_make_turns("Hi", "Hello"),
+    cid_make_turns("More", "Sure")
+  ))
+
+  store$fail_puts <- TRUE
+  resolve_title("Generated")
+  settled <- FALSE
+  promises::then(pending, function(...) settled <<- TRUE)
+  wait_until(function() settled, description = "retitle callback")
+  later::run_now(0.1)
+
+  expect_identical(cid_title(ctrl), "Hi")
+})
+
+test_that("chat$history$title() follows the submission and response lifecycle", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  mod <- NULL
+  title_during_call <- "unset"
+  client$stream_async <- function(...) {
+    # Mid-call the conversation is an identified, unsaved draft.
+    title_during_call <<- shiny::isolate(mod$history$title())
+    "response"
+  }
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      expect_null(shiny::isolate(mod$history$title()))
+
+      session$setInputs(
+        chat_history_browser_token = "tok",
+        chat_user_input = "hi there"
+      )
+      cid_pump(session)
+      expect_null(title_during_call)
+
+      ctrl <- get_session_chat_bookmark_info(
+        session,
+        "chat.history-controller"
+      )
+      expect_false(is.null(ctrl$record))
+      expect_identical(shiny::isolate(mod$history$title()), ctrl$record$title)
+
+      ctrl$rename(ctrl$record$id, "Renamed")
+      expect_identical(shiny::isolate(mod$history$title()), "Renamed")
+
+      ctrl$new_chat()
+      expect_null(shiny::isolate(mod$history$title()))
+    }
+  )
+})
+
+test_that("with history = FALSE chat$history$title() stays NULL", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  mod <- NULL
+  client$stream_async <- function(...) "response"
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <<- chat_server("chat", client, history = FALSE, session = session)
+    },
+    {
+      session$setInputs(chat_user_input = "hi")
+      cid_pump(session)
+      expect_null(shiny::isolate(mod$history$title()))
+    }
+  )
+})
+
+test_that("set_client() preserves the active saved title", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  mod <- NULL
+  client$stream_async <- function(...) "response"
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_history_browser_token = "tok",
+        chat_user_input = "hi there"
+      )
+      cid_pump(session)
+      ctrl_before <- get_session_chat_bookmark_info(
+        session,
+        "chat.history-controller"
+      )
+      ctrl_before$on_response(cid_make_turns("hi there", "response"))
+      ctrl_before$rename(ctrl_before$record$id, "Kept title")
+
+      new_client <- mock_chat_client()
+      new_client$stream_async <- function(...) "response"
+      mod$set_client(new_client)
+      cid_pump(session)
+
+      ctrl_after <- get_session_chat_bookmark_info(
+        session,
+        "chat.history-controller"
+      )
+      expect_false(identical(ctrl_before, ctrl_after))
+      expect_identical(shiny::isolate(mod$history$title()), "Kept title")
+    }
+  )
+})

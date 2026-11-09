@@ -2,6 +2,8 @@
 
 ## New features and improvements
 
+* `chat_server()` now exposes the active conversation's title as `chat$history$title()`, a reactive that mirrors `chat$history$conversation_id()`. It is `NULL` until the first response is saved, then follows the stored title across automatic titling, renames, restores, and conversation switches. (#471)
+
 * Tool call results that render HTML now syntax-highlight code blocks, matching how code looks elsewhere in the chat. (#455)
 
 * Text file attachments are now sent to the model via `ellmer::content_document_url()` rather than a hand-assembled `<file-attachment>` text wrapper, so providers that handle documents natively receive a real document. This raises the minimum required ellmer version to 0.5.0. (#415)

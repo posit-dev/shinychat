@@ -146,6 +146,17 @@
 #'       is also handed to the client (via its `conversation_id` binding,
 #'       when supported), which records it as the `gen_ai.conversation.id`
 #'       attribute on its own OpenTelemetry spans.
+#'     * `history$title()`: A reactive expression returning the active
+#'       conversation's title, mirroring `history$conversation_id()`: `NULL`
+#'       when history is disabled, the chat is an empty draft, or the
+#'       conversation has an ID but hasn't been saved yet. After the first
+#'       response is saved it is the fallback title derived from the first
+#'       user message, even with `history_options(title = NULL)`; it then
+#'       updates when the active conversation is renamed or automatically
+#'       retitled, and follows restores, conversation switches, and
+#'       `set_client()` calls. It is `NULL` again after a new chat or after
+#'       deleting the active conversation. Like any reactive, it requires a
+#'       reactive context; use [shiny::isolate()] outside one.
 #'     * `set_client(new_client, sync = TRUE)`: Replace the chat client used by
 #'       the module. When `sync` is `TRUE` (the default), the new client
 #'       inherits conversation turns, system prompt, and tools from the previous
@@ -582,7 +593,7 @@ chat_server <- function(
         !is.null(active_record) &&
           !identical(config$restore_mode, "none")
       ) {
-        new_ctrl$activate_record(active_record)
+        new_ctrl$activate_saved_record(active_record)
       } else if (!is.null(active_id)) {
         new_ctrl$seed_conversation_id(active_id)
       }
@@ -1044,6 +1055,14 @@ chat_server <- function(
       return(NULL)
     }
     hist_ctrl$conversation_id()
+  })
+
+  hist_env$title <- shiny::reactive(label = "mod_conversation_title", {
+    hist_ctrl <- history_controller()
+    if (is.null(hist_ctrl)) {
+      return(NULL)
+    }
+    hist_ctrl$title()
   })
 
   lockEnvironment(hist_env)
