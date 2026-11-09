@@ -8738,6 +8738,7 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
             controller.conversation_id = None
             controller._allocate_conversation_id = allocate_conversation_id
             controller._active_id_now = lambda: controller.conversation_id
+            controller._set_title = lambda title: None
             controller.on_active_id_change = None
             controller._save_callbacks = []
 
