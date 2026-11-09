@@ -101,9 +101,11 @@ HistoryController <- R6::R6Class(
     # controller replacement) and publish its persisted title. First-save
     # activation uses activate_record() directly: the record isn't persisted
     # yet, so its title must not be public until put_record() succeeds.
-    activate_saved_record = function(record) {
+    # `title` overrides the published value for callers handing over an
+    # in-memory record whose persistence they can't vouch for.
+    activate_saved_record = function(record, title = record$title) {
       self$activate_record(record)
-      private$set_title(record$title)
+      private$set_title(title)
       invisible()
     },
 

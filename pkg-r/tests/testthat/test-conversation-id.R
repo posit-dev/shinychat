@@ -1049,3 +1049,48 @@ test_that("set_client() preserves the active saved title", {
     }
   )
 })
+
+test_that("set_client() does not publish the title of a never-persisted record", {
+  skip_if_not_installed("ellmer")
+
+  store <- CidFlakyStore$new()
+  client <- mock_chat_client()
+  mod <- NULL
+  client$stream_async <- function(...) "response"
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = store, title = NULL),
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_history_browser_token = "tok",
+        chat_user_input = "hi there"
+      )
+      cid_pump(session)
+      ctrl <- get_session_chat_bookmark_info(
+        session,
+        "chat.history-controller"
+      )
+      ctrl$new_chat()
+
+      store$fail_puts <- TRUE
+      expect_error(
+        ctrl$on_response(cid_make_turns("Hi", "Hello")),
+        "unavailable"
+      )
+      expect_false(is.null(ctrl$record))
+      expect_null(shiny::isolate(mod$history$title()))
+
+      store$fail_puts <- FALSE
+      mod$set_client(mock_chat_client())
+      cid_pump(session)
+      expect_null(shiny::isolate(mod$history$title()))
+    }
+  )
+})

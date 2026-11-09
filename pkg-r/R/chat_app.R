@@ -552,6 +552,13 @@ chat_server <- function(
       paste0(id, ".history-controller")
     )
     active_record <- if (!is.null(old_ctrl)) old_ctrl$record else NULL
+    # Carry the old controller's *published* title, not record$title: after a
+    # failed first save the in-memory record was never persisted.
+    active_title <- if (!is.null(old_ctrl)) {
+      shiny::isolate(old_ctrl$title())
+    } else {
+      NULL
+    }
     active_id <- if (!is.null(old_ctrl) && is.null(active_record)) {
       shiny::isolate(old_ctrl$conversation_id())
     } else {
@@ -593,7 +600,7 @@ chat_server <- function(
         !is.null(active_record) &&
           !identical(config$restore_mode, "none")
       ) {
-        new_ctrl$activate_saved_record(active_record)
+        new_ctrl$activate_saved_record(active_record, title = active_title)
       } else if (!is.null(active_id)) {
         new_ctrl$seed_conversation_id(active_id)
       }
