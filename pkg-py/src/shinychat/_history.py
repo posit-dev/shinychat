@@ -456,6 +456,31 @@ class ChatHistory:
             return None
         return controller.conversation_id()
 
+    def title(self) -> str | None:
+        """
+        Reactive read of the active conversation's title.
+
+        Returns ``None`` when history is disabled (or hasn't started for
+        this session) or the active conversation hasn't been saved yet
+        (an empty chat or an identified-but-unsaved draft). Once the
+        conversation is first persisted — in Python, when the first user
+        message is admitted, before the model call finishes — it is the
+        fallback title derived from that message, even with
+        ``HistoryOptions(title=None)``; it then updates when the active
+        conversation is renamed or automatically retitled, and follows
+        restores and conversation switches. It is ``None`` again after a
+        new chat or after deleting the active conversation. The title is
+        stable across client swaps (``chat.client.set()``).
+
+        Like any reactive read, this must be called inside a reactive
+        context (e.g. a ``@reactive.effect`` or ``@render.*`` function);
+        non-reactive callers must wrap it in ``shiny.reactive.isolate()``.
+        """
+        controller = self._controller
+        if controller is None:
+            return None
+        return controller.title()
+
     async def save(self) -> bool:
         """
         Persist the active conversation and its app state.

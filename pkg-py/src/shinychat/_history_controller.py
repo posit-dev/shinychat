@@ -299,6 +299,10 @@ class HistoryController:
         from shiny import reactive
 
         self._active_id: "reactive.Value[str | None]" = reactive.Value(None)
+        # The active record's persisted title, published only after a
+        # successful store write (or when a store record is loaded on
+        # restore). See _set_title().
+        self._title: "reactive.Value[str | None]" = reactive.Value(None)
         self.on_active_id_change: (
             Callable[[str | None], Awaitable[None]] | None
         ) = None
@@ -346,6 +350,41 @@ class HistoryController:
         with reactive.isolate():
             return self._active_id()
 
+    def title(self) -> str | None:
+        """
+        Reactive read of the active conversation's persisted title.
+
+        Returns ``None`` when the active conversation has never been saved
+        (an empty chat or an identified-but-unsaved draft), otherwise the
+        title most recently persisted for it: the fallback title from the
+        first user input after the first successful save, then the result
+        of user renames, automatic retitling, restores, and conversation
+        switches. It returns ``None`` again after a new chat, after the
+        active conversation is deleted, and after failed-restore cleanup.
+        Renaming or retitling a non-active conversation does not change it.
+        Titling may be disabled (``title=None`` in ``HistoryOptions``); the
+        fallback title is still exposed.
+
+        Like any reactive read, this requires a reactive context;
+        non-reactive callers must wrap it in ``shiny.reactive.isolate()``.
+        """
+        return self._title()
+
+    def _title_now(self) -> str | None:
+        from shiny import reactive
+
+        with reactive.isolate():
+            return self._title()
+
+    def _set_title(self, title: str | None) -> None:
+        """Single writer for the public title.
+
+        Callers publish only after the title is persisted (or, for
+        restore/switch, loaded from the store).
+        """
+        if self._title_now() != title:
+            self._title.set(title)
+
     def _allocate_conversation_id(self) -> str:
         id = self._active_id_now()
         if id is None:
@@ -364,6 +403,7 @@ class HistoryController:
     async def clear_active(self) -> None:
         if self._active_id_now() is not None:
             self._active_id.set(None)
+        self._set_title(None)
 
     async def _set_active_id(self, id: str | None) -> None:
         if self._active_id_now() == id:
@@ -659,6 +699,7 @@ class HistoryController:
 
         recorder.reset()
         self._active_id.set(None)
+        self._set_title(None)
 
         cleanup_failures: list[BaseException] = []
 
@@ -814,6 +855,7 @@ class HistoryController:
                     ),
                 )
                 await self._set_active_id(target.id)
+                self._set_title(target.title)
                 recorder.mark_active_id_published(target)
             with _restore_step("persisting the restored record"):
                 if persist_active_pointer:
