@@ -463,8 +463,8 @@ class ChatHistory:
         Returns ``None`` when history is disabled (or hasn't started for
         this session) or the active conversation hasn't been saved yet
         (an empty chat or an identified-but-unsaved draft). Once the
-        conversation is first persisted — in Python, when the first user
-        message is admitted, before the model call finishes — it is the
+        conversation is first saved — which happens when the first user
+        message is admitted, before the response finishes — it is the
         fallback title derived from that message, even with
         ``HistoryOptions(title=None)``; it then updates when the active
         conversation is renamed or automatically retitled, and follows

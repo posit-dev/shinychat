@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
-* With conversation history enabled, `Chat.history.title()` reactively reads the active conversation's title: `None` until the conversation is first saved, then the fallback title from the first user message (even with `HistoryOptions(title=None)`), following user renames, automatic retitling, restores, and conversation switches, and returning to `None` after a new chat or deleting the active conversation. (#471)
+* `Chat.history.title()` is a new reactive read of the active conversation's title. It is `None` until the conversation is first saved, then follows user renames, automatic retitling, restores, and conversation switches. (#471)
 * Text file attachments now use the model provider's native document support when available. (#415)
 * Tool call results that render HTML now syntax-highlight code blocks, matching how code looks elsewhere in the chat. (#455)
 * With conversation history enabled, a sent message stays in the (locked) message box until the app has accepted it, and only then moves into the chat. If the app rejects the message ("Message not sent"), it never appears in the chat, and your text and attachments are still in the message box, which becomes editable again. `Chat.update_user_input()` calls that change the message box while a message waits are applied after it is accepted, or discarded if it is not. (#453)

@@ -6,7 +6,8 @@ new-chat/delete. The ID is handed to the chatlas client before model work so
 the client can annotate its own OpenTelemetry spans with
 `gen_ai.conversation.id` (shinychat itself does not create spans).
 
-Mirrors pkg-r/tests/testthat/test-conversation-id.R.
+Mirrors pkg-r/tests/testthat/test-conversation-id.R, including its
+"Active conversation title" section (see the title section below).
 """
 
 from __future__ import annotations
@@ -28,6 +29,10 @@ from shinychat._history_controller import HistoryController
 from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,
+)
+from shinychat._history_types import (
+    ConversationRecordV1,
+    ConversationRecordV2,
 )
 
 # ---------------------------------------------------------------------------
@@ -549,7 +554,10 @@ def test_history_disabled_stays_none():
 
 
 # ---------------------------------------------------------------------------
-# Active conversation title (mirrors the R section of the same name)
+# Active conversation title. Ported from the R conversation-title tests
+# (shinychat#4hq3). One deliberate divergence: Python persists the record
+# when the user's message is admitted, so the fallback title is published
+# before the response finishes; R publishes it after the response is saved.
 # ---------------------------------------------------------------------------
 
 
@@ -559,35 +567,86 @@ class FlakyStore(InMemoryConversationStore):
     def __init__(self) -> None:
         super().__init__()
         self.fail_puts = False
+        self.failed_puts = 0
 
-    async def put(self, partition: Any, record: Any) -> None:
+    async def put(
+        self,
+        partition: ConversationPartition,
+        record: ConversationRecordV1 | ConversationRecordV2,
+    ) -> None:
         if self.fail_puts:
+            self.failed_puts += 1
             raise RuntimeError("store unavailable")
         await super().put(partition, record)
 
 
-def ctrl_title(ctrl: HistoryController) -> str | None:
+def active_title(ctrl: HistoryController) -> str | None:
     return ctrl._title_now()
 
 
-def watch_title(
-    session: Session, read: Any
-) -> tuple[list[str | None], Any]:
-    """Record every value an observer sees, to assert on invalidation."""
-    seen: list[str | None] = []
+def active_record(ctrl: HistoryController) -> ConversationRecordV2:
+    recorder = ctrl._exchange_recorder
+    assert recorder.record is not None
+    return recorder.record
+
+
+def open_history(session: Session) -> None:
+    """Complete the browser-mode initial history decision (empty restore)."""
+    session.input["chat_history_browser_token"] = reactive.Value("tok")
+    # Flush is awaited by the caller.
+
+
+def watch_value(session: Session, read: Any) -> tuple[list[Any], Any]:
+    """Record every value an observer sees, to assert on invalidation.
+
+    The read callable must NOT wrap its read in ``reactive.isolate()``:
+    isolation suppresses dependency tracking, so the effect would never
+    re-run.
+    """
+    seen: list[Any] = []
     with session_context(session):
         eff = reactive.Effect(lambda: seen.append(read()))
     return seen, eff
 
 
+def blocking_title_fn() -> tuple[Any, asyncio.Event, asyncio.Event]:
+    """A title_fn that blocks on an event; returns (fn, entered, release)."""
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def title(turns: list[dict[str, Any]]) -> str:
+        entered.set()
+        await release.wait()
+        return "Generated"
+
+    return title, entered, release
+
+
+async def complete_exchange(
+    chat: Chat,
+    mock: StreamClient,
+    session: Session,
+    user: str,
+    reply: str = "Reply",
+) -> HistoryController:
+    """Submit, wait for the stream, then settle the response save."""
+    status = await submit_and_wait(chat, session, user)
+    assert status == "success"
+    ctrl = chat.history._controller
+    assert ctrl is not None
+    mock.set_turns(make_turns(user, reply))
+    await ctrl.on_response()
+    return ctrl
+
+
 def test_title_is_none_for_empty_chat_and_identified_draft():
     async def main() -> None:
         ctrl = make_controller()
-        assert ctrl_title(ctrl) is None
+        assert active_title(ctrl) is None
 
         await ctrl.ensure_conversation_id()
-        assert ctrl._active_id_now() is not None
-        assert ctrl_title(ctrl) is None
+        assert active_id(ctrl) is not None
+        assert active_title(ctrl) is None
 
     run_async(main)
 
@@ -595,26 +654,14 @@ def test_title_is_none_for_empty_chat_and_identified_draft():
 def test_fallback_title_appears_after_first_successful_save():
     async def main() -> None:
         chat, mock, session = make_chat()
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
-        status = await submit_and_wait(chat, session, "Tell me about penguins")
-        assert status == "success"
-
-        # Unlike R, Python persists the record when the user input is
-        # admitted (stream persistence), so the fallback title is already
-        # public before the response settles.
+        ctrl = await complete_exchange(
+            chat, mock, session, "Tell me about penguins"
+        )
         assert public_title(chat) == "Tell me about penguins"
-
-        ctrl = chat.history._controller
-        assert ctrl is not None
-        recorder = ctrl._exchange_recorder
-        assert recorder.record is not None
-        assert public_title(chat) == recorder.record.title
-
-        mock.set_turns(make_turns("Tell me about penguins", "Sure"))
-        await ctrl.on_response()
-        assert public_title(chat) == "Tell me about penguins"
+        assert public_title(chat) == active_record(ctrl).title
 
     run_async(main)
 
@@ -622,10 +669,10 @@ def test_fallback_title_appears_after_first_successful_save():
 def test_failed_first_save_keeps_title_none_until_a_save_succeeds():
     async def main() -> None:
         store = FlakyStore()
-        chat, mock, session = make_chat(
+        chat, _, session = make_chat(
             history=HistoryOptions(store=store, title=None)
         )
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
         ctrl = chat.history._controller
@@ -636,8 +683,7 @@ def test_failed_first_save_keeps_title_none_until_a_save_succeeds():
         store.fail_puts = True
         await submit(session, "Hi")
         await pump_until_idle(chat, timeout=0.5)
-        recorder = ctrl._exchange_recorder
-        assert recorder.record is not None
+        assert ctrl._exchange_recorder.record is not None
         assert public_title(chat) is None
 
         store.fail_puts = False
@@ -651,24 +697,19 @@ def test_failed_first_save_keeps_title_none_until_a_save_succeeds():
 def test_title_invalidates_observers_on_each_title_change():
     async def main() -> None:
         chat, mock, session = make_chat()
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
-        seen, eff = watch_title(session, chat.history.title)
+        seen, eff = watch_value(session, chat.history.title)
         try:
             await reactive.flush()
             assert seen == [None]
 
-            status = await submit_and_wait(chat, session, "Hi")
-            assert status == "success"
-            ctrl = chat.history._controller
-            assert ctrl is not None
+            ctrl = await complete_exchange(chat, mock, session, "Hi")
             await reactive.flush()
             assert seen == [None, "Hi"]
 
-            record = ctrl._exchange_recorder.record
-            assert record is not None
-            await ctrl.rename(record.id, "Renamed")
+            await ctrl.rename(active_record(ctrl).id, "Renamed")
             await reactive.flush()
 
             await ctrl.new_chat()
@@ -684,24 +725,18 @@ def test_title_invalidates_observers_on_each_title_change():
 def test_rewriting_unchanged_title_does_not_invalidate_observers():
     async def main() -> None:
         chat, mock, session = make_chat()
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
-        status = await submit_and_wait(chat, session, "Hi")
-        assert status == "success"
-        ctrl = chat.history._controller
-        assert ctrl is not None
-        mock.set_turns(make_turns("Hi", "Hello"))
-        await ctrl.on_response()
+        ctrl = await complete_exchange(chat, mock, session, "Hi")
+        assert public_title(chat) == "Hi"
 
-        seen, eff = watch_title(session, chat.history.title)
+        seen, eff = watch_value(session, chat.history.title)
         try:
             await reactive.flush()
             assert seen == ["Hi"]
 
-            record = ctrl._exchange_recorder.record
-            assert record is not None
-            await ctrl.rename(record.id, "Hi")
+            await ctrl.rename(active_record(ctrl).id, "Hi")
             await ctrl.save()
             await reactive.flush()
 
@@ -715,32 +750,21 @@ def test_rewriting_unchanged_title_does_not_invalidate_observers():
 def test_active_rename_updates_title_inactive_rename_does_not():
     async def main() -> None:
         chat, mock, session = make_chat()
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
-        ctrl = chat.history._controller
-        assert ctrl is not None
-
-        status = await submit_and_wait(chat, session, "one")
-        assert status == "success"
-        mock.set_turns(make_turns("one", "Reply"))
-        await ctrl.on_response()
+        ctrl = await complete_exchange(chat, mock, session, "one")
         id1 = public_conversation_id(chat)
         assert id1 is not None
 
         await ctrl.new_chat()
-        status = await submit_and_wait(chat, session, "two")
-        assert status == "success"
-        mock.set_turns(make_turns("two", "Reply"))
-        await ctrl.on_response()
+        await complete_exchange(chat, mock, session, "two")
         assert public_title(chat) == "two"
 
         await ctrl.rename(id1, "Inactive rename")
         assert public_title(chat) == "two"
 
-        record = ctrl._exchange_recorder.record
-        assert record is not None
-        await ctrl.rename(record.id, "  Active   rename ")
+        await ctrl.rename(active_record(ctrl).id, "  Active   rename ")
         assert public_title(chat) == "Active rename"
 
     run_async(main)
@@ -752,22 +776,19 @@ def test_failed_rename_leaves_the_previous_title_in_place():
         chat, mock, session = make_chat(
             history=HistoryOptions(store=store, title=None)
         )
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
-        status = await submit_and_wait(chat, session, "Hi")
-        assert status == "success"
-        ctrl = chat.history._controller
-        assert ctrl is not None
-        mock.set_turns(make_turns("Hi", "Hello"))
-        await ctrl.on_response()
+        ctrl = await complete_exchange(chat, mock, session, "Hi")
         assert public_title(chat) == "Hi"
 
-        record = ctrl._exchange_recorder.record
-        assert record is not None
+        record = active_record(ctrl)
         store.fail_puts = True
         with pytest.raises(RuntimeError, match="unavailable"):
             await ctrl.rename(record.id, "Nope")
+        # The public title is unchanged, but the in-memory record carries
+        # the failed rename until the next successful save publishes it.
+        assert record.title == "Nope"
         assert public_title(chat) == "Hi"
 
     run_async(main)
@@ -776,16 +797,10 @@ def test_failed_rename_leaves_the_previous_title_in_place():
 def test_restore_switch_new_chat_and_delete_update_the_title():
     async def main() -> None:
         chat, mock, session = make_chat()
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
-        ctrl = chat.history._controller
-        assert ctrl is not None
-
-        status = await submit_and_wait(chat, session, "one")
-        assert status == "success"
-        mock.set_turns(make_turns("one", "Reply"))
-        await ctrl.on_response()
+        ctrl = await complete_exchange(chat, mock, session, "one")
         id1 = public_conversation_id(chat)
         assert id1 is not None
         assert public_title(chat) == "one"
@@ -793,10 +808,7 @@ def test_restore_switch_new_chat_and_delete_update_the_title():
         await ctrl.new_chat()
         assert public_title(chat) is None
 
-        status = await submit_and_wait(chat, session, "two")
-        assert status == "success"
-        mock.set_turns(make_turns("two", "Reply"))
-        await ctrl.on_response()
+        await complete_exchange(chat, mock, session, "two")
         id2 = public_conversation_id(chat)
         assert id2 is not None
         assert public_title(chat) == "two"
@@ -821,27 +833,21 @@ def test_initial_restore_adopts_the_persisted_title():
         chat, mock, session = make_chat(
             history=HistoryOptions(store=store, title=None)
         )
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
-        status = await submit_and_wait(chat, session, "Hi")
-        assert status == "success"
-        ctrl = chat.history._controller
-        assert ctrl is not None
-        mock.set_turns(make_turns("Hi", "Hello"))
-        await ctrl.on_response()
-        record = ctrl._exchange_recorder.record
-        assert record is not None
+        ctrl = await complete_exchange(chat, mock, session, "Hi")
+        record = active_record(ctrl)
         await ctrl.rename(record.id, "Persisted")
         conv_id = record.id
 
         # A fresh chat restoring the saved conversation adopts its
         # persisted title.
-        chat2, mock2, session2 = make_chat(
+        chat2, _, session2 = make_chat(
             history=HistoryOptions(store=store, title=None)
         )
         session2.input["chat_history_current_id"].set(conv_id)
-        session2.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session2)
         await reactive.flush()
 
         assert public_conversation_id(chat2) == conv_id
@@ -850,14 +856,16 @@ def test_initial_restore_adopts_the_persisted_title():
     run_async(main)
 
 
-def test_clear_failed_restore_clears_the_title():
+def test_failed_restore_cleanup_clears_the_title():
+    # Focused unit test of the cleanup path; the surrounding failed-restore
+    # flow is covered by the history controller tests.
     async def main() -> None:
         ctrl = make_controller()
         ctrl._set_title("Stale")
-        assert ctrl_title(ctrl) == "Stale"
+        assert active_title(ctrl) == "Stale"
 
         await ctrl._clear_failed_restore()
-        assert ctrl_title(ctrl) is None
+        assert active_title(ctrl) is None
 
     run_async(main)
 
@@ -866,111 +874,79 @@ def test_title_disabled_still_exposes_fallback_and_never_retitles():
     async def main() -> None:
         # make_chat's default HistoryOptions(title=None) disables titling.
         chat, mock, session = make_chat()
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
         ctrl = chat.history._controller
         assert ctrl is not None
         assert ctrl.title_enabled is False
 
-        status = await submit_and_wait(chat, session, "Hi")
-        assert status == "success"
-        mock.set_turns(make_turns("Hi", "Hello"))
-        await ctrl.on_response()
+        await complete_exchange(chat, mock, session, "Hi")
         assert public_title(chat) == "Hi"
 
-        status = await submit_and_wait(chat, session, "More")
-        assert status == "success"
-        mock.set_turns(make_turns("Hi", "Hello") + make_turns("More", "Sure"))
-        await ctrl.on_response()
-        await asyncio.sleep(0.05)
-        await reactive.flush()
-
+        await complete_exchange(chat, mock, session, "More")
         # The second response would trigger titling when enabled; with
-        # titling disabled the fallback stays.
+        # titling disabled no title task is created and the fallback stays.
+        assert ctrl._title_task is None
         assert public_title(chat) == "Hi"
 
     run_async(main)
+
+
+async def two_exchange_chat(
+    title_fn: Any,
+    store: InMemoryConversationStore | None = None,
+) -> tuple[Chat, StreamClient, Session, HistoryController]:
+    """A chat with titling enabled and two settled exchanges."""
+    chat, mock, session = make_chat(
+        history=HistoryOptions(
+            store=store or InMemoryConversationStore(), title=title_fn
+        )
+    )
+    open_history(session)
+    await reactive.flush()
+
+    await complete_exchange(chat, mock, session, "Hi")
+    await complete_exchange(chat, mock, session, "More")
+    ctrl = chat.history._controller
+    assert ctrl is not None
+    return chat, mock, session, ctrl
 
 
 def test_automatic_retitle_updates_title_once_it_is_persisted():
     async def main() -> None:
-        async def title(turns: list[dict[str, Any]]) -> str:
-            return "Generated"
+        title_fn, _, release = blocking_title_fn()
+        _, _, _, ctrl = await two_exchange_chat(title_fn)
 
-        chat, mock, session = make_chat(
-            history=HistoryOptions(store="memory", title=title)
-        )
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
-        await reactive.flush()
-
-        ctrl = chat.history._controller
-        assert ctrl is not None
-
-        status = await submit_and_wait(chat, session, "Hi")
-        assert status == "success"
-        mock.set_turns(make_turns("Hi", "Hello"))
-        await ctrl.on_response()
-        assert public_title(chat) == "Hi"
-
-        status = await submit_and_wait(chat, session, "More")
-        assert status == "success"
-        mock.set_turns(make_turns("Hi", "Hello") + make_turns("More", "Sure"))
-        await ctrl.on_response()
-
-        task = ctrl._title_task
-        assert task is not None
-        await task
-
-        recorder = ctrl._exchange_recorder
-        assert recorder.record is not None
-        assert public_title(chat) == "Generated"
-        assert recorder.record.title == "Generated"
-
-    run_async(main)
-
-
-def test_user_rename_wins_over_an_inflight_retitle():
-    async def main() -> None:
-        entered = asyncio.Event()
-        release = asyncio.Event()
-
-        async def title(turns: list[dict[str, Any]]) -> str:
-            entered.set()
-            await release.wait()
-            return "Generated"
-
-        chat, mock, session = make_chat(
-            history=HistoryOptions(store="memory", title=title)
-        )
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
-        await reactive.flush()
-
-        ctrl = chat.history._controller
-        assert ctrl is not None
-
-        status = await submit_and_wait(chat, session, "Hi")
-        assert status == "success"
-        mock.set_turns(make_turns("Hi", "Hello"))
-        await ctrl.on_response()
-
-        status = await submit_and_wait(chat, session, "More")
-        assert status == "success"
-        mock.set_turns(make_turns("Hi", "Hello") + make_turns("More", "Sure"))
-        await ctrl.on_response()
-
-        await asyncio.wait_for(entered.wait(), 1)
-        record = ctrl._exchange_recorder.record
-        assert record is not None
-        await ctrl.rename(record.id, "Mine")
+        # The retitle is still in flight, so the fallback is still public.
+        assert active_title(ctrl) == "Hi"
 
         release.set()
         task = ctrl._title_task
         assert task is not None
         await task
 
-        assert public_title(chat) == "Mine"
-        assert record.title == "Mine"
+        assert active_record(ctrl).title == "Generated"
+        assert active_title(ctrl) == "Generated"
+
+    run_async(main)
+
+
+def test_user_rename_wins_over_an_inflight_retitle():
+    async def main() -> None:
+        title_fn, entered, release = blocking_title_fn()
+        _, _, _, ctrl = await two_exchange_chat(title_fn)
+
+        await asyncio.wait_for(entered.wait(), 1)
+        await ctrl.rename(active_record(ctrl).id, "Mine")
+
+        release.set()
+        task = ctrl._title_task
+        assert task is not None
+        await task
+
+        assert active_record(ctrl).title == "Mine"
+        assert active_title(ctrl) == "Mine"
 
     run_async(main)
 
@@ -978,44 +954,24 @@ def test_user_rename_wins_over_an_inflight_retitle():
 def test_failed_retitle_persistence_leaves_title_unchanged():
     async def main() -> None:
         store = FlakyStore()
-        entered = asyncio.Event()
-        release = asyncio.Event()
-
-        async def title(turns: list[dict[str, Any]]) -> str:
-            entered.set()
-            await release.wait()
-            return "Generated"
-
-        chat, mock, session = make_chat(
-            history=HistoryOptions(store=store, title=title)
-        )
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
-        await reactive.flush()
-
-        ctrl = chat.history._controller
-        assert ctrl is not None
-
-        status = await submit_and_wait(chat, session, "Hi")
-        assert status == "success"
-        mock.set_turns(make_turns("Hi", "Hello"))
-        await ctrl.on_response()
-        assert public_title(chat) == "Hi"
-
-        status = await submit_and_wait(chat, session, "More")
-        assert status == "success"
-        mock.set_turns(make_turns("Hi", "Hello") + make_turns("More", "Sure"))
-        await ctrl.on_response()
+        title_fn, entered, release = blocking_title_fn()
+        _, _, _, ctrl = await two_exchange_chat(title_fn, store=store)
+        assert active_title(ctrl) == "Hi"
 
         await asyncio.wait_for(entered.wait(), 1)
         store.fail_puts = True
         release.set()
         task = ctrl._title_task
         assert task is not None
-        while not task.done():
-            await asyncio.sleep(0.01)
-        await asyncio.sleep(0)  # let the done callback surface the failure
+        # The retitle persists through the recorder's normal path, so the
+        # failed store write surfaces as the task's exception. The chat
+        # harness settles each exchange twice, so more than one retitle
+        # task may be scheduled; count at least one failed put.
+        (error,) = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(error, RuntimeError)
+        assert store.failed_puts >= 1
 
-        assert public_title(chat) == "Hi"
+        assert active_title(ctrl) == "Hi"
 
     run_async(main)
 
@@ -1027,12 +983,11 @@ def test_history_title_follows_the_submission_and_response_lifecycle():
         titles_seen: list[str | None] = []
 
         def on_stream() -> None:
-            # Mid-call the conversation is an identified, unsaved draft.
             titles_seen.append(public_title(chat))
 
         mock.on_stream = on_stream
 
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
         assert public_title(chat) is None
@@ -1041,32 +996,20 @@ def test_history_title_follows_the_submission_and_response_lifecycle():
         assert status == "success"
 
         assert len(titles_seen) == 1
-        # Unlike R, the record is already persisted when the model call
-        # starts (input admission persists it), so the fallback title is
-        # public mid-call.
         assert titles_seen[0] == "hi there"
 
         ctrl = chat.history._controller
         assert ctrl is not None
         mock.set_turns(make_turns("hi there", "response"))
         await ctrl.on_response()
-
-        recorder = ctrl._exchange_recorder
-        assert recorder.record is not None
-        assert public_title(chat) == recorder.record.title
-
-        await ctrl.rename(recorder.record.id, "Renamed")
-        assert public_title(chat) == "Renamed"
-
-        await ctrl.new_chat()
-        assert public_title(chat) is None
+        assert public_title(chat) == active_record(ctrl).title
 
     run_async(main)
 
 
 def test_history_disabled_title_stays_none():
     async def main() -> None:
-        chat, mock, session = make_chat(history=False)
+        chat, _, session = make_chat(history=False)
         assert chat.history._controller is None
 
         status = await submit_and_wait(chat, session, "hi")
@@ -1079,18 +1022,11 @@ def test_history_disabled_title_stays_none():
 def test_client_set_preserves_the_title():
     async def main() -> None:
         chat, mock, session = make_chat()
-        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        open_history(session)
         await reactive.flush()
 
-        status = await submit_and_wait(chat, session, "hi")
-        assert status == "success"
-        ctrl = chat.history._controller
-        assert ctrl is not None
-        mock.set_turns(make_turns("hi", "response"))
-        await ctrl.on_response()
-        record = ctrl._exchange_recorder.record
-        assert record is not None
-        await ctrl.rename(record.id, "Kept title")
+        ctrl = await complete_exchange(chat, mock, session, "hi")
+        await ctrl.rename(active_record(ctrl).id, "Kept title")
 
         # Unlike R, a client swap doesn't re-register history in Python (the
         # controller — and its published title — simply survives).

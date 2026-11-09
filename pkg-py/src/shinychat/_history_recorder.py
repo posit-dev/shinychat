@@ -780,22 +780,18 @@ class _ExchangeRecorder:
             if not self._read_only and node.status == "pending":
                 node.messages.clear()
         await self._host.store.put(partition, snapshot)
-        # Publish the title only after the store write succeeds: a failed
-        # first save must leave the public title unset. Every save, active
-        # rename, and retitle flows through here, and they all mutate
-        # record.title before persisting, so a failed put leaves the
-        # previously published title in place.
-        if self.record is record and self._host._active_id_now() == record_id:
-            self._host._set_title(record.title)
         if self.record is record:
             for node in record.nodes.values():
                 if node.checkpoint is None:
                     node.checkpoint = node.checkpoint_state
-        if (
-            self.record is record
-            and self._host._active_id_now() == record_id
-            and self._active_id_published_for is not record
-        ):
+        # Publish the title only once the store write has succeeded, so a
+        # failed first save leaves the public title unset.
+        still_active = (
+            self.record is record and self._host._active_id_now() == record_id
+        )
+        if still_active:
+            self._host._set_title(record.title)
+        if still_active and self._active_id_published_for is not record:
             published = await self._host._publish_active_id(record)
             if published:
                 self._active_id_published_for = record

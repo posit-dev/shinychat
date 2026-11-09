@@ -299,9 +299,7 @@ class HistoryController:
         from shiny import reactive
 
         self._active_id: "reactive.Value[str | None]" = reactive.Value(None)
-        # The active record's persisted title, published only after a
-        # successful store write (or when a store record is loaded on
-        # restore). See _set_title().
+        # The active record's persisted title; published via _set_title().
         self._title: "reactive.Value[str | None]" = reactive.Value(None)
         self.on_active_id_change: (
             Callable[[str | None], Awaitable[None]] | None
@@ -352,18 +350,12 @@ class HistoryController:
 
     def title(self) -> str | None:
         """
-        Reactive read of the active conversation's persisted title.
+        Reactive read of the persisted title of the active conversation.
 
-        Returns ``None`` when the active conversation has never been saved
-        (an empty chat or an identified-but-unsaved draft), otherwise the
-        title most recently persisted for it: the fallback title from the
-        first user input after the first successful save, then the result
-        of user renames, automatic retitling, restores, and conversation
-        switches. It returns ``None`` again after a new chat, after the
-        active conversation is deleted, and after failed-restore cleanup.
-        Renaming or retitling a non-active conversation does not change it.
-        Titling may be disabled (``title=None`` in ``HistoryOptions``); the
-        fallback title is still exposed.
+        The title is published only after a successful store write, or when
+        a stored record is loaded on restore. It is ``None`` for an empty
+        chat or an identified-but-unsaved draft. Renaming or retitling a
+        non-active conversation does not change it.
 
         Like any reactive read, this requires a reactive context;
         non-reactive callers must wrap it in ``shiny.reactive.isolate()``.
@@ -382,6 +374,8 @@ class HistoryController:
         Callers publish only after the title is persisted (or, for
         restore/switch, loaded from the store).
         """
+        # Set only on change, like _set_active_id(), so re-persisting an
+        # unchanged title does not invalidate observers.
         if self._title_now() != title:
             self._title.set(title)
 
@@ -854,8 +848,12 @@ class HistoryController:
                         else "model_unavailable"
                     ),
                 )
-                await self._set_active_id(target.id)
+                # install_restored_record already ran, so publish the title
+                # before the awaited active-id callback: a flush running
+                # during that await must not observe the new id with the
+                # old title.
                 self._set_title(target.title)
+                await self._set_active_id(target.id)
                 recorder.mark_active_id_published(target)
             with _restore_step("persisting the restored record"):
                 if persist_active_pointer:
