@@ -856,6 +856,36 @@ def test_initial_restore_adopts_the_persisted_title():
     run_async(main)
 
 
+def test_switch_publishes_the_title_before_the_active_id_callback():
+    async def main() -> None:
+        chat, mock, session = make_chat()
+        open_history(session)
+        await reactive.flush()
+
+        ctrl = await complete_exchange(chat, mock, session, "one")
+        id1 = public_conversation_id(chat)
+        assert id1 is not None
+        await ctrl.new_chat()
+        await complete_exchange(chat, mock, session, "two")
+        id2 = public_conversation_id(chat)
+        assert id2 is not None
+
+        # The switch publishes the target title before the awaited
+        # active-id callback runs, so a flush (or the callback itself)
+        # never observes the new id paired with the previous
+        # conversation's title.
+        seen: list[tuple[str | None, str | None]] = []
+
+        async def on_change(id: str | None) -> None:
+            seen.append((id, ctrl._title_now()))
+
+        ctrl.on_active_id_change = on_change
+        await ctrl.switch_to(id1)
+        assert seen[-1] == (id1, "one")
+
+    run_async(main)
+
+
 def test_failed_restore_cleanup_clears_the_title():
     # Focused unit test of the cleanup path; the surrounding failed-restore
     # flow is covered by the history controller tests.
