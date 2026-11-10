@@ -1,50 +1,61 @@
 # MCP Console `send` display translation.
 #
-# Console's `send` tool echoes display facts ({note, language}) in result
-# `_meta`, forwarded verbatim by MCP clients (chatlas, mcptools) into
-# `extra`. The payload is semantic facts; shinychat owns all presentation.
-# Contract:
+# Console stamps the spec-standard server identity
+# (`io.modelcontextprotocol/serverInfo`, its `Implementation` object) on
+# every tool result's `_meta`, forwarded verbatim by MCP clients (chatlas,
+# mcptools) into `extra`. The identity plus the tool request — which the
+# client already holds — is everything the card needs; shinychat owns all
+# presentation. Contract:
 # https://github.com/posit-dev/mcp-console/blob/main/docs/API.md
 
-# Key under which Console's `send` facts arrive in result `_meta`.
-console_send_meta_key <- "posit.mcp-console/send"
+# Key under which the server identity arrives in result `_meta`.
+console_server_info_key <- "io.modelcontextprotocol/serverInfo"
 
 
-# Translate Console's `send` facts into the display convention when the app
-# author has not set `display` themselves. Malformed payloads warn and
-# degrade — `_meta` is an external trust boundary. Keep in sync with
-# pkg-py's `_chat_console.py`.
+# Translate Console's `send` calls into the display convention when the app
+# author has not set `display` themselves. The gate is the server identity
+# plus the tool name — not request sniffing. Malformed identity warns and
+# degrades — `_meta` is an external trust boundary, forwarded verbatim
+# from a server. Keep in sync with pkg-py's `_chat_console.py`.
 console_send_display <- function(extra, request) {
-  facts <- extra[[console_send_meta_key]]
-  if (is.null(facts)) {
+  server_info <- extra[[console_server_info_key]]
+  if (is.null(server_info)) {
     return(NULL)
   }
-  if (!is.list(facts)) {
+  if (!is.list(server_info)) {
     cli::cli_warn(c(
-      "x" = "Ignoring malformed {.val {console_send_meta_key}} metadata: expected a named list, not {.obj_type_friendly {facts}}."
+      "x" = "Ignoring malformed {.val {console_server_info_key}} metadata: expected a named list, not {.obj_type_friendly {server_info}}."
     ))
     return(NULL)
   }
-  note <- facts[["note"]]
-  language <- facts[["language"]]
-  if (!is.null(note) && !is_string(note)) {
+  server_name <- server_info[["name"]]
+  if (!is_string(server_name)) {
     cli::cli_warn(c(
-      "x" = "Ignoring non-string {.field note} in {.val {console_send_meta_key}} metadata."
+      "x" = "Ignoring malformed {.val {console_server_info_key}} metadata: {.field name} must be a string."
     ))
-    note <- NULL
+    return(NULL)
   }
-  if (!is.null(language) && !is_string(language)) {
-    cli::cli_warn(c(
-      "x" = "Ignoring non-string {.field language} in {.val {console_send_meta_key}} metadata."
-    ))
-    language <- NULL
+  if (!identical(server_name, "mcp-console")) {
+    return(NULL)
   }
+  # A result can outlive its request (e.g. history restore); without the
+  # request the call can neither be gated nor read.
+  if (is.null(request) || !identical(request@name, "send")) {
+    return(NULL)
+  }
+  arguments <- request@arguments
+  if (!is.list(arguments)) {
+    return(NULL)
+  }
+  note <- arguments[["note"]]
+  language <- console_request_language(arguments)
   title <- console_note_title(note)
   if (is.null(title) && !is.null(language)) {
-    # Unknown languages yield `NA`: no name fallback without a note.
-    title <- unname(console_language_names[language])
+    title <- unname(console_language_names[[language]])
   }
-  if (is.null(title) || is.na(title)) {
+  if (is.null(title)) {
+    # No code and no note (session polls, control-only calls): nothing to
+    # title a card with; the default card stands.
     return(NULL)
   }
   code_tag <- console_code_details(language, request)
@@ -66,10 +77,21 @@ console_send_display <- function(extra, request) {
   )
 }
 
-# The `language` fact names the `send` argument holding the executed code;
-# read it from the request, which the client already has, rather than
-# echoing code in `_meta`. Restricted to known languages — the fact is
-# server-controlled and becomes an HTML class attribute. Keep in sync with
+# The language is whichever of `send`'s code arguments holds code. The
+# client already holds the request, so the server echoes nothing. Keep in
+# sync with pkg-py's `_chat_console.py`.
+console_request_language <- function(arguments) {
+  for (language in names(console_language_names)) {
+    if (is_string(arguments[[language]])) {
+      return(language)
+    }
+  }
+  NULL
+}
+
+# Read the executed code from the request argument the derived language
+# names, rather than echoing code in `_meta`. Restricted to known
+# languages — the value becomes an HTML class attribute. Keep in sync with
 # pkg-py's `_chat_console.py`.
 console_code_details <- function(language, request) {
   if (!is_string(language) || !(language %in% names(console_language_names))) {

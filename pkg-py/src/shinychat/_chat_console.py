@@ -1,9 +1,11 @@
 """MCP Console ``send`` display translation.
 
-Console's ``send`` tool echoes display facts (``{note, language}``) in
-result ``_meta``, forwarded verbatim by MCP clients (chatlas, mcptools)
-into ``extra``. The payload is semantic facts; shinychat owns all
-presentation. Contract:
+Console stamps the spec-standard server identity
+(``io.modelcontextprotocol/serverInfo``, its ``Implementation`` object)
+on every tool result's ``_meta``, forwarded verbatim by MCP clients
+(chatlas, mcptools) into ``extra``. The identity plus the tool request —
+which the client already holds — is everything the card needs; shinychat
+owns all presentation. Contract:
 https://github.com/posit-dev/mcp-console/blob/main/docs/API.md
 """
 
@@ -23,42 +25,52 @@ __all__ = [
     "console_send_display",
 ]
 
-CONSOLE_SEND_META_KEY = "posit.mcp-console/send"
+CONSOLE_SERVER_INFO_KEY = "io.modelcontextprotocol/serverInfo"
 
 
 def console_send_display(
-    extra: dict[str, Any], request: "ContentToolRequest"
+    extra: dict[str, Any], request: "ContentToolRequest | None"
 ) -> "dict[str, Any] | None":
-    # Translate Console's `send` facts into the display convention when the
-    # app author has not set `display`. Malformed payloads warn and
-    # degrade — `_meta` is an external trust boundary. Returns a plain
-    # dict (like pkg-r's list) for `get_tool_result_display` to coerce.
-    # Keep in sync with pkg-r's `console_send.R`.
-    facts = extra.get(CONSOLE_SEND_META_KEY)
-    if facts is None:
+    # Translate Console's `send` calls into the display convention when the
+    # app author has not set `display`. The gate is the server identity
+    # plus the tool name — not request sniffing. Malformed identity warns
+    # and degrades — `_meta` is an external trust boundary, forwarded
+    # verbatim from a server. Returns a plain dict (like pkg-r's list) for
+    # `get_tool_result_display` to coerce. Keep in sync with pkg-r's
+    # `console_send.R`.
+    server_info = extra.get(CONSOLE_SERVER_INFO_KEY)
+    if server_info is None:
         return None
-    if not isinstance(facts, dict):
+    if not isinstance(server_info, dict):
         warnings.warn(
-            f"Ignoring malformed {CONSOLE_SEND_META_KEY!r} metadata: "
-            f"expected a dict, not {type(facts).__name__}."
+            f"Ignoring malformed {CONSOLE_SERVER_INFO_KEY!r} metadata: "
+            f"expected a dict, not {type(server_info).__name__}."
         )
         return None
-    note = facts.get("note")
-    if note is not None and not isinstance(note, str):
+    server_name = server_info.get("name")
+    if not isinstance(server_name, str):
         warnings.warn(
-            f"Ignoring non-string 'note' in {CONSOLE_SEND_META_KEY!r} metadata."
+            f"Ignoring malformed {CONSOLE_SERVER_INFO_KEY!r} metadata: "
+            "'name' must be a string."
         )
-        note = None
-    language = facts.get("language")
-    if language is not None and not isinstance(language, str):
-        warnings.warn(
-            f"Ignoring non-string 'language' in {CONSOLE_SEND_META_KEY!r} metadata."
-        )
-        language = None
+        return None
+    if server_name != "mcp-console":
+        return None
+    # A result can outlive its request (e.g. history restore); without the
+    # request the call can neither be gated nor read.
+    if request is None or request.name != "send":
+        return None
+    arguments = getattr(request, "arguments", None)
+    if not isinstance(arguments, dict):
+        return None
+    note = arguments.get("note")
+    language = console_request_language(arguments)
     title = console_note_title(note)
     if title is None and language is not None:
-        title = CONSOLE_LANGUAGE_NAMES.get(language)
+        title = CONSOLE_LANGUAGE_NAMES[language]
     if title is None:
+        # No code and no note (session polls, control-only calls): nothing
+        # to title a card with; the default card stands.
         return None
     code_tag = console_code_details(language, request)
     details = None
@@ -83,13 +95,21 @@ def console_send_display(
     }
 
 
+def console_request_language(arguments: dict[str, Any]) -> "str | None":
+    # The language is whichever of `send`'s code arguments holds code. The
+    # client already holds the request, so the server echoes nothing.
+    for language in CONSOLE_LANGUAGE_NAMES:
+        if isinstance(arguments.get(language), str):
+            return language
+    return None
+
+
 def console_code_details(
     language: Any, request: "ContentToolRequest"
 ) -> "Tag | None":
-    # The `language` fact names the `send` argument holding the executed
-    # code; read it from the request, which the client already has, rather
-    # than echoing code in `_meta`. Restricted to known languages — the
-    # fact is server-controlled and becomes an HTML class attribute.
+    # Read the executed code from the request argument the derived language
+    # names, rather than echoing code in `_meta`. Restricted to known
+    # languages — the value becomes an HTML class attribute.
     if language not in CONSOLE_LANGUAGE_NAMES:
         return None
     arguments = getattr(request, "arguments", None)

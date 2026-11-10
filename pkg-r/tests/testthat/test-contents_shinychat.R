@@ -483,21 +483,20 @@ test_that("get_tool_result_display handles invalid formats", {
   )
 })
 
-test_that("console send facts translate to display metadata", {
-  extra <- list(
-    "posit.mcp-console/send" = list(
-      note = "A scatter plot\n\nsecond line is not the title",
-      language = "r"
-    )
-  )
+test_that("console send serverInfo translates to display metadata", {
   request <- new_tool_request(
+    name = "send",
     arguments = list(
       r = "plot(x)",
       note = "A scatter plot\n\nsecond line is not the title"
     )
   )
   display <- shinychat:::get_tool_result_display(
-    new_tool_result(value = "42", request = request, extra = extra)
+    new_tool_result(
+      value = "42",
+      request = request,
+      extra = console_server_info()
+    )
   )
   expect_identical(display$title, "A scatter plot")
   expect_true(startsWith(display$icon, "<svg"))
@@ -512,22 +511,103 @@ test_that("console send facts translate to display metadata", {
   expect_true(display$full_screen)
 })
 
+test_that("console translator gates on server identity and tool name", {
+  # A look-alike `send` tool from another server gets no card.
+  expect_no_warning(
+    other_server <- shinychat:::get_tool_result_display(new_tool_result(
+      value = "42",
+      request = new_tool_request(
+        name = "send",
+        arguments = list(r = "plot(x)", note = "n")
+      ),
+      extra = console_server_info(list(name = "other-server", version = "1.0"))
+    ))
+  )
+  expect_null(other_server$title)
+
+  # mcp-console results for tools other than `send` get no card.
+  expect_no_warning(
+    other_tool <- shinychat:::get_tool_result_display(new_tool_result(
+      value = "42",
+      request = new_tool_request(
+        name = "list_sessions",
+        arguments = list(note = "n")
+      ),
+      extra = console_server_info()
+    ))
+  )
+  expect_null(other_tool$title)
+
+  # Session polls pass the identity gate but carry neither code nor a
+  # note: no card, no warning.
+  expect_no_warning(
+    poll <- shinychat:::get_tool_result_display(new_tool_result(
+      value = "42",
+      request = new_tool_request(
+        name = "send",
+        arguments = list(session = "abc")
+      ),
+      extra = console_server_info()
+    ))
+  )
+  expect_null(poll$title)
+
+  # Requirements responses are successful `send` results whose requests
+  # carry code, so they get cards (accepted design decision).
+  requirements <- shinychat:::get_tool_result_display(new_tool_result(
+    value = "42",
+    request = new_tool_request(
+      name = "send",
+      arguments = list(r = "library(dplyr)")
+    ),
+    extra = console_server_info()
+  ))
+  expect_identical(requirements$title, "R")
+  expect_false(is.null(requirements$details))
+
+  # Malformed identity (non-list value, non-string `name`) warns and
+  # degrades — `_meta` is an external trust boundary.
+  expect_warning(
+    not_a_list <- shinychat:::get_tool_result_display(new_tool_result(
+      value = "42",
+      request = new_tool_request(name = "send", arguments = list(r = "x")),
+      extra = console_server_info("not a list")
+    )),
+    "io.modelcontextprotocol/serverInfo"
+  )
+  expect_null(not_a_list$title)
+
+  expect_warning(
+    bad_name <- shinychat:::get_tool_result_display(new_tool_result(
+      value = "42",
+      request = new_tool_request(name = "send", arguments = list(r = "x")),
+      extra = console_server_info(list(name = 42))
+    )),
+    "io.modelcontextprotocol/serverInfo"
+  )
+  expect_null(bad_name$title)
+})
+
 test_that("console translator escapes titles and falls back to language", {
-  extra <- list(
-    "posit.mcp-console/send" = list(
-      note = "<b>raw</b> & dangerous",
-      language = "python"
-    )
-  )
-  display <- shinychat:::get_tool_result_display(
-    new_tool_result(value = "42", extra = extra)
-  )
+  display <- shinychat:::get_tool_result_display(new_tool_result(
+    value = "42",
+    request = new_tool_request(
+      name = "send",
+      arguments = list(note = "<b>raw</b> & dangerous", python = "print(1)")
+    ),
+    extra = console_server_info()
+  ))
   expect_identical(display$title, "&lt;b&gt;raw&lt;/b&gt; &amp; dangerous")
 
-  language_only <- list("posit.mcp-console/send" = list(language = "sql"))
-  display <- shinychat:::get_tool_result_display(
-    new_tool_result(value = "42", extra = language_only)
-  )
+  # No note: the language display name titles the card.
+  display <- shinychat:::get_tool_result_display(new_tool_result(
+    value = "42",
+    request = new_tool_request(
+      name = "send",
+      arguments = list(sql = "SELECT 1")
+    ),
+    extra = console_server_info()
+  ))
   expect_identical(display$title, "SQL")
 
   absent <- shinychat:::get_tool_result_display(
@@ -555,12 +635,13 @@ test_that("console translator drops language prefix redundant with the icon", {
     list("Sum of 1 to 100", "r", "Sum of 1 to 100")
   )
   for (case in cases) {
-    extra <- list(
-      "posit.mcp-console/send" = list(note = case[[1]], language = case[[2]])
-    )
-    display <- shinychat:::get_tool_result_display(
-      new_tool_result(value = "42", extra = extra)
-    )
+    arguments <- list(note = case[[1]])
+    arguments[[case[[2]]]] <- "x"
+    display <- shinychat:::get_tool_result_display(new_tool_result(
+      value = "42",
+      request = new_tool_request(name = "send", arguments = arguments),
+      extra = console_server_info()
+    ))
     expect_identical(display$title, case[[3]], info = case[[1]])
   }
 })
@@ -633,10 +714,16 @@ test_that("display lookup ignores near-miss keys", {
 })
 
 test_that("console translator trims trailing blank lines from code", {
-  extra <- list("posit.mcp-console/send" = list(note = "n", language = "r"))
-  request <- new_tool_request(arguments = list(r = "plot(x)\n\n\n", note = "n"))
+  request <- new_tool_request(
+    name = "send",
+    arguments = list(r = "plot(x)\n\n\n", note = "n")
+  )
   display <- shinychat:::get_tool_result_display(
-    new_tool_result(value = "42", request = request, extra = extra)
+    new_tool_result(
+      value = "42",
+      request = request,
+      extra = console_server_info()
+    )
   )
   expect_identical(
     as.character(display$details$content),
@@ -644,35 +731,30 @@ test_that("console translator trims trailing blank lines from code", {
   )
 })
 
-test_that("console translator defers to bare display and degrades malformed facts", {
-  both <- list(
-    "display" = list(title = "Author title"),
-    "posit.mcp-console/send" = list(note = "Server note", language = "r")
+test_that("console translator defers to bare display", {
+  both <- c(
+    list(display = list(title = "Author title")),
+    console_server_info()
   )
-  display <- shinychat:::get_tool_result_display(
-    new_tool_result(value = "42", extra = both)
-  )
-  expect_identical(display$title, "Author title")
-
-  malformed <- list("posit.mcp-console/send" = "not a list")
-  expect_warning(
-    display <- shinychat:::get_tool_result_display(
-      new_tool_result(value = "42", extra = malformed)
+  display <- shinychat:::get_tool_result_display(new_tool_result(
+    value = "42",
+    request = new_tool_request(
+      name = "send",
+      arguments = list(r = "x", note = "Server note")
     ),
-    "posit.mcp-console/send"
-  )
-  expect_null(display$title)
+    extra = both
+  ))
+  expect_identical(display$title, "Author title")
 })
 
 test_that("console translator escapes code and skips unusable code", {
   escaped <- shinychat:::get_tool_result_display(new_tool_result(
     value = "ok",
     request = new_tool_request(
+      name = "send",
       arguments = list(python = "print('<b>&amp;</b>')", note = "n")
     ),
-    extra = list(
-      "posit.mcp-console/send" = list(note = "n", language = "python")
-    )
+    extra = console_server_info()
   ))
   expect_identical(
     as.character(escaped$details$content),
@@ -680,22 +762,31 @@ test_that("console translator escapes code and skips unusable code", {
   )
   expect_false(escaped$show_request)
 
-  # Note-only call: no language fact, no code argument.
+  # Note-only call: no code argument, so no language and no details slot.
   note_only <- shinychat:::get_tool_result_display(new_tool_result(
     value = "ok",
-    request = new_tool_request(arguments = list(note = "Just a thought")),
-    extra = list("posit.mcp-console/send" = list(note = "Just a thought"))
+    request = new_tool_request(
+      name = "send",
+      arguments = list(note = "Just a thought")
+    ),
+    extra = console_server_info()
   ))
   expect_identical(note_only$title, "Just a thought")
+  expect_null(note_only$icon)
   expect_null(note_only$details)
 
-  # Fact names a language but the request has no such string argument.
-  missing <- shinychat:::get_tool_result_display(new_tool_result(
+  # A code argument holding a non-string yields no language.
+  non_string <- shinychat:::get_tool_result_display(new_tool_result(
     value = "ok",
-    request = new_tool_request(arguments = list(x = 1)),
-    extra = list("posit.mcp-console/send" = list(note = "n", language = "r"))
+    request = new_tool_request(
+      name = "send",
+      arguments = list(note = "n", r = 42)
+    ),
+    extra = console_server_info()
   ))
-  expect_null(missing$details)
+  expect_identical(non_string$title, "n")
+  expect_null(non_string$icon)
+  expect_null(non_string$details)
 
   # A result can outlive its request (e.g. history restore); the helper
   # tolerates a NULL request rather than crashing on slot access.
@@ -704,10 +795,11 @@ test_that("console translator escapes code and skips unusable code", {
   # Unknown language: no icon (existing rule) and no details slot.
   unknown <- shinychat:::get_tool_result_display(new_tool_result(
     value = "ok",
-    request = new_tool_request(arguments = list(julia = "1 + 1")),
-    extra = list(
-      "posit.mcp-console/send" = list(note = "n", language = "julia")
-    )
+    request = new_tool_request(
+      name = "send",
+      arguments = list(note = "n", julia = "1 + 1")
+    ),
+    extra = console_server_info()
   ))
   expect_identical(unknown$title, "n")
   expect_null(unknown$icon)
