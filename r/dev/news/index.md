@@ -4,6 +4,13 @@
 
 ### New features and improvements
 
+- [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  now exposes the active conversation’s title as `chat$history$title()`,
+  a reactive that mirrors `chat$history$conversation_id()`. It is `NULL`
+  until the first response is saved, then follows the stored title
+  across automatic titling, renames, restores, and conversation
+  switches. ([\#471](https://github.com/posit-dev/shinychat/issues/471))
+
 - Tool call results that render HTML now syntax-highlight code blocks,
   matching how code looks elsewhere in the chat.
   ([\#455](https://github.com/posit-dev/shinychat/issues/455))
@@ -25,6 +32,10 @@
   ([\#411](https://github.com/posit-dev/shinychat/issues/411))
 
 ### Bug fixes
+
+- A multi-call tool group now keeps the tool’s definition title after
+  its calls finish, instead of switching to the first call’s result
+  title. ([\#457](https://github.com/posit-dev/shinychat/issues/457))
 
 - Expanding a running tool call’s row in a tool group now shows its
   arguments. Previously the panel stayed empty until the call finished.

@@ -205,6 +205,20 @@ chat_server(
     supported), which records it as the `gen_ai.conversation.id`
     attribute on its own OpenTelemetry spans.
 
+  - `history$title()`: A reactive expression returning the active
+    conversation's title, mirroring `history$conversation_id()`: `NULL`
+    when history is disabled, the chat is an empty draft, or the
+    conversation has an ID but hasn't been saved yet. After the first
+    response is saved it is the fallback title derived from the first
+    user message, even with `history_options(title = NULL)`; it then
+    updates when the active conversation is renamed or automatically
+    retitled, and follows restores, conversation switches, and
+    `set_client()` calls. It is `NULL` again after a new chat or after
+    deleting the active conversation. Like any reactive, it requires a
+    reactive context; use
+    [`shiny::isolate()`](https://rdrr.io/pkg/shiny/man/isolate.html)
+    outside one.
+
   - `set_client(new_client, sync = TRUE)`: Replace the chat client used
     by the module. When `sync` is `TRUE` (the default), the new client
     inherits conversation turns, system prompt, and tools from the
