@@ -93,9 +93,9 @@ class RecorderHost(Protocol):
     Declares exactly the members the recorder uses: the turns adapter, the
     active partition, the store, the chat (for capture-callback suspension
     during display replay), app-state save callbacks, active-id access and
-    publish, conversation-id allocation, and ``send_history_update``. Any
-    test double for the recorder's host must provide all of them; there are
-    no optional fallbacks.
+    publish, conversation-id allocation, title publication, and
+    ``send_history_update``. Any test double for the recorder's host must
+    provide all of them; there are no optional fallbacks.
     """
 
     adapter: TurnsAdapter
@@ -105,6 +105,8 @@ class RecorderHost(Protocol):
     _save_callbacks: list[Callable[[dict[str, Any]], None]]
 
     def _active_id_now(self) -> str | None: ...
+
+    def _set_title(self, title: str | None) -> None: ...
 
     def _allocate_conversation_id(self) -> str: ...
 
@@ -782,11 +784,14 @@ class _ExchangeRecorder:
             for node in record.nodes.values():
                 if node.checkpoint is None:
                     node.checkpoint = node.checkpoint_state
-        if (
-            self.record is record
-            and self._host._active_id_now() == record_id
-            and self._active_id_published_for is not record
-        ):
+        # Publish the title only once the store write has succeeded, so a
+        # failed first save leaves the public title unset.
+        still_active = (
+            self.record is record and self._host._active_id_now() == record_id
+        )
+        if still_active:
+            self._host._set_title(record.title)
+        if still_active and self._active_id_published_for is not record:
             published = await self._host._publish_active_id(record)
             if published:
                 self._active_id_published_for = record

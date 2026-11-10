@@ -299,6 +299,8 @@ class HistoryController:
         from shiny import reactive
 
         self._active_id: "reactive.Value[str | None]" = reactive.Value(None)
+        # The active record's persisted title; published via _set_title().
+        self._title: "reactive.Value[str | None]" = reactive.Value(None)
         self.on_active_id_change: (
             Callable[[str | None], Awaitable[None]] | None
         ) = None
@@ -346,6 +348,37 @@ class HistoryController:
         with reactive.isolate():
             return self._active_id()
 
+    def title(self) -> str | None:
+        """
+        Reactive read of the persisted title of the active conversation.
+
+        The title is published only after a successful store write, or when
+        a stored record is loaded on restore. It is ``None`` for an empty
+        chat or an identified-but-unsaved draft. Renaming or retitling a
+        non-active conversation does not change it.
+
+        Like any reactive read, this requires a reactive context;
+        non-reactive callers must wrap it in ``shiny.reactive.isolate()``.
+        """
+        return self._title()
+
+    def _title_now(self) -> str | None:
+        from shiny import reactive
+
+        with reactive.isolate():
+            return self._title()
+
+    def _set_title(self, title: str | None) -> None:
+        """Single writer for the public title.
+
+        Callers publish only after the title is persisted (or, for
+        restore/switch, loaded from the store).
+        """
+        # Set only on change, like _set_active_id(), so re-persisting an
+        # unchanged title does not invalidate observers.
+        if self._title_now() != title:
+            self._title.set(title)
+
     def _allocate_conversation_id(self) -> str:
         id = self._active_id_now()
         if id is None:
@@ -364,6 +397,7 @@ class HistoryController:
     async def clear_active(self) -> None:
         if self._active_id_now() is not None:
             self._active_id.set(None)
+        self._set_title(None)
 
     async def _set_active_id(self, id: str | None) -> None:
         if self._active_id_now() == id:
@@ -659,6 +693,7 @@ class HistoryController:
 
         recorder.reset()
         self._active_id.set(None)
+        self._set_title(None)
 
         cleanup_failures: list[BaseException] = []
 
@@ -813,6 +848,11 @@ class HistoryController:
                         else "model_unavailable"
                     ),
                 )
+                # install_restored_record already ran, so publish the title
+                # before the awaited active-id callback: a flush running
+                # during that await must not observe the new id with the
+                # old title.
+                self._set_title(target.title)
                 await self._set_active_id(target.id)
                 recorder.mark_active_id_published(target)
             with _restore_step("persisting the restored record"):

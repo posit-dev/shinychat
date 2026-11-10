@@ -67,6 +67,14 @@ HistoryController <- R6::R6Class(
       private$active_id_rv()
     },
 
+    # Reactive read of the active conversation's title: `NULL` while there is
+    # no saved record (empty chat or identified-but-unsaved draft), otherwise
+    # the title most recently persisted for it. Same reactive-context rules
+    # as conversation_id().
+    title = function() {
+      private$title_rv()
+    },
+
     # Returns the active conversation ID, allocating one when the active
     # conversation is an empty draft. Repeated calls for the same active
     # conversation return the same ID.
@@ -89,9 +97,22 @@ HistoryController <- R6::R6Class(
       invisible()
     },
 
+    # Activate a record that already exists in the store (restore, switch,
+    # controller replacement) and publish its persisted title. First-save
+    # activation uses activate_record() directly: the record isn't persisted
+    # yet, so its title must not be public until put_record() succeeds.
+    # `title` overrides the published value for callers handing over an
+    # in-memory record whose persistence they can't vouch for.
+    activate_saved_record = function(record, title = record$title) {
+      self$activate_record(record)
+      private$set_title(title)
+      invisible()
+    },
+
     clear_active = function() {
       self$record <- NULL
       private$set_active_id(NULL)
+      private$set_title(NULL)
       invisible()
     },
 
@@ -122,6 +143,7 @@ HistoryController <- R6::R6Class(
       private$title_enabled <- !is.null(title)
       private$session <- session
       private$active_id_rv <- shiny::reactiveVal(NULL)
+      private$title_rv <- shiny::reactiveVal(NULL)
       private$max_store_bytes <- if (!is.null(options$max_store_mb)) {
         # Bytes must stay a double: as.integer() overflows R's 32-bit integer
         # range at max_store_mb >= 2048, yielding NA.
@@ -169,6 +191,7 @@ HistoryController <- R6::R6Class(
       self$record$values <- private$capture_app_state()
 
       self$put_record(self$partition, self$record)
+      private$set_title(self$record$title)
       private$evict_if_needed()
 
       if (!is.null(self$on_response_saved)) {
@@ -228,7 +251,7 @@ HistoryController <- R6::R6Class(
 
       set_turns_recorded(private$client, record_path_turns(target))
       self$replay_ui(target)
-      self$activate_record(target)
+      self$activate_saved_record(target)
       self$restore_app_state(target$values %||% list())
       self$send_sibling_metadata()
       self$send_history_update()
@@ -269,6 +292,7 @@ HistoryController <- R6::R6Class(
         self$record$title <- title
         self$record$title_source <- "user"
         self$put_record(self$partition, self$record)
+        private$set_title(self$record$title)
       } else {
         target <- self$get_record(self$partition, conv_id)
         if (!is.null(target)) {
@@ -373,6 +397,7 @@ HistoryController <- R6::R6Class(
       )
       self$record$values <- private$capture_app_state()
       self$put_record(self$partition, self$record)
+      private$set_title(self$record$title)
       TRUE
     },
 
@@ -588,6 +613,19 @@ HistoryController <- R6::R6Class(
       invisible()
     },
 
+    # The active record's persisted title; see title(). Created in
+    # initialize() for the same reason as active_id_rv.
+    title_rv = NULL,
+
+    # Single writer for the public title. Callers publish only after the
+    # title is persisted (or, for restore/switch, loaded from the store).
+    set_title = function(title) {
+      if (!identical(shiny::isolate(private$title_rv()), title)) {
+        private$title_rv(title)
+      }
+      invisible()
+    },
+
     capture_app_state = function() {
       values <- list()
       if (!is.null(private$on_save)) {
@@ -659,6 +697,7 @@ HistoryController <- R6::R6Class(
         self$record$title <- title
         self$record$title_source <- "llm"
         self$put_record(self$partition, self$record)
+        private$set_title(self$record$title)
         self$send_history_update()
       })
     }
@@ -998,7 +1037,7 @@ chat_enable_history <- function(
             controller$replay_ui(target)
             restore_after_first_flush(target$values)
           }
-          controller$activate_record(target)
+          controller$activate_saved_record(target)
           controller$send_sibling_metadata()
           controller$send_history_update()
           initialized <<- TRUE
@@ -1031,7 +1070,7 @@ chat_enable_history <- function(
           controller$replay_ui(target)
           restore_after_first_flush(target$values)
         }
-        controller$activate_record(target)
+        controller$activate_saved_record(target)
         controller$send_sibling_metadata()
       }
     }
