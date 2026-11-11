@@ -130,10 +130,12 @@ test_that("page-chat navigation example returns home before showing artifact", {
 test_that("page-chat R examples are discoverable as package examples", {
   examples_dir <- page_chat_example_path()
   expect_true(dir.exists(examples_dir))
-  expect_setequal(
-    list.dirs(examples_dir, full.names = FALSE, recursive = FALSE),
-    page_chat_example_names
-  )
+  # Subset, not setequal: examples-shiny/ also ships non-page-chat
+  # examples (e.g. mcp-console).
+  expect_true(all(
+    page_chat_example_names %in%
+      list.dirs(examples_dir, full.names = FALSE, recursive = FALSE)
+  ))
 
   for (name in page_chat_example_names) {
     example_dir <- system.file(

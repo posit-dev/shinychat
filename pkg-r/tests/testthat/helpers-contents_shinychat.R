@@ -46,6 +46,16 @@ new_tool_result <- function(
   )
 }
 
+# The wire contract: mcp-console stamps the spec-standard server identity
+# (its `Implementation`) on every result's `_meta`; mcptools forwards it
+# verbatim into `extra`. Everything else the card needs comes from the
+# tool request the client already holds.
+console_server_info <- function(
+  value = list(name = "mcp-console", version = "0.0.7", title = "MCP Console")
+) {
+  list("io.modelcontextprotocol/serverInfo" = value)
+}
+
 # Helper function to create a basic tool definition
 new_tool <- function(name = NULL, description = NULL, annotations = list()) {
   ellmer::tool(

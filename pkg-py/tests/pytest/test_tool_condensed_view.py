@@ -26,9 +26,11 @@ from shinychat._chat_normalize_chatlas import (
     ToolRequestComponent,
     ToolResultDetails,
     ToolResultDisplay,
+    get_tool_result_display,
     tool_request_contents,
     tool_result_block,
     tool_result_contents,
+    tool_result_display,
 )
 from shinychat._chat_types import ToolResultBlock
 from shinychat.types import ChatMessage
@@ -41,6 +43,15 @@ def _result_block(result: ContentToolResult) -> ToolResultBlock:
     return block
 
 
+def _display(result: ContentToolResult) -> ToolResultDisplay:
+    assert result.request is not None
+    return get_tool_result_display(result, result.request)
+
+
+def _details(display: ToolResultDisplay) -> ToolResultDetails:
+    return cast("ToolResultDetails", display.details)
+
+
 def _tool(annotations: dict[str, Any] | None = None) -> Tool:
     def my_tool(x: int) -> int:
         return x
@@ -51,10 +62,12 @@ def _tool(annotations: dict[str, Any] | None = None) -> Tool:
 
 
 def _request(
-    tool: Tool | None = None, arguments: dict[str, Any] | None = None
+    tool: Tool | None = None,
+    arguments: dict[str, Any] | None = None,
+    name: str = "my_tool",
 ) -> ContentToolRequest:
     req = ContentToolRequest(
-        id="call-1", name="my_tool", arguments=arguments or {"x": 1}
+        id="call-1", name=name, arguments=arguments or {"x": 1}
     )
     if tool is not None:
         # Mirrors what chatlas itself does internally: `x.tool =
@@ -68,7 +81,8 @@ def _request(
 
 
 def _result(request: ContentToolRequest, **kwargs: Any) -> ContentToolResult:
-    return ContentToolResult(value=2, request=request, **kwargs)
+    kwargs.setdefault("value", 2)
+    return ContentToolResult(request=request, **kwargs)
 
 
 def _render(component: Any) -> str:
@@ -1149,6 +1163,296 @@ async def test_append_message_includes_tool_request_block_in_segments() -> None:
 
 
 # ---------------------------------------------------------------------------
+# MCP Console `send` serverInfo translator
+# ---------------------------------------------------------------------------
+
+# The wire contract: mcp-console stamps the spec-standard server identity
+# (its `Implementation`) on every result's `_meta`; chatlas/mcptools
+# forward it verbatim into `extra`. Everything else the card needs comes
+# from the tool request the client already holds.
+CONSOLE_SERVER_INFO = {
+    "name": "mcp-console",
+    "version": "0.0.7",
+    "title": "MCP Console",
+}
+
+
+def _console_extra(server_info: Any = CONSOLE_SERVER_INFO) -> dict[str, Any]:
+    return {"io.modelcontextprotocol/serverInfo": server_info}
+
+
+def test_console_send_translates_to_display():
+    result = _result(
+        _request(
+            name="send",
+            arguments={"r": "plot(x)", "note": "A scatter plot\n\nmore"},
+        ),
+        extra=_console_extra(),
+    )
+    display = _display(result)
+    assert display.title == "A scatter plot"
+    assert display.icon is not None and str(display.icon).startswith("<svg")
+    assert display.open_style == "framed"
+    assert display.show_request is False
+    assert display.details is not None
+    assert (
+        str(_details(display).get("content"))
+        == '<pre><code class="language-r">plot(x)</code></pre>'
+    )
+    assert _details(display).get("summary") == "Code"
+    assert "open" not in _details(
+        display
+    )  # the content-type policy decides (T3)
+    assert display.full_screen is True
+
+
+def test_console_translator_gates_on_server_identity_and_tool_name():
+    # A look-alike `send` tool from another server gets no card.
+    other_server = _result(
+        _request(name="send", arguments={"r": "plot(x)", "note": "n"}),
+        extra=_console_extra({"name": "other-server", "version": "1.0"}),
+    )
+    assert _display(other_server) == ToolResultDisplay()
+
+    # mcp-console results for tools other than `send` get no card.
+    other_tool = _result(
+        _request(name="list_sessions", arguments={"note": "n"}),
+        extra=_console_extra(),
+    )
+    assert _display(other_tool) == ToolResultDisplay()
+
+    # Session polls pass the identity gate but carry neither code nor a
+    # note: no card, no warning.
+    poll = _result(
+        _request(name="send", arguments={"session": "abc"}),
+        extra=_console_extra(),
+    )
+    assert _display(poll) == ToolResultDisplay()
+
+    # Malformed identity (non-dict value, non-string `name`) warns and
+    # degrades — `_meta` is an external trust boundary.
+    not_a_dict = _result(
+        _request(name="send", arguments={"r": "x"}),
+        extra=_console_extra("not a dict"),
+    )
+    with pytest.warns(UserWarning, match="io.modelcontextprotocol/serverInfo"):
+        assert _display(not_a_dict) == ToolResultDisplay()
+
+    bad_name = _result(
+        _request(name="send", arguments={"r": "x"}),
+        extra=_console_extra({"name": 42}),
+    )
+    with pytest.warns(UserWarning, match="io.modelcontextprotocol/serverInfo"):
+        assert _display(bad_name) == ToolResultDisplay()
+
+    # Requirements responses are successful `send` results whose requests
+    # carry code, so they get cards (accepted design decision).
+    requirements = _result(
+        _request(name="send", arguments={"r": "library(dplyr)"}),
+        extra=_console_extra(),
+    )
+    requirements_display = _display(requirements)
+    assert requirements_display.title == "R"
+    assert requirements_display.details is not None
+
+
+def test_console_translator_escapes_code_and_hides_request():
+    result = _result(
+        _request(
+            name="send",
+            arguments={"python": "print('<b>&amp;</b>')", "note": "n"},
+        ),
+        extra=_console_extra(),
+    )
+    display = _display(result)
+    # The escape map is exactly & -> &amp;, < -> &lt;, > -> &gt; (quotes
+    # stay literal), mirrored in pkg-r.
+    assert display.details is not None
+    assert str(_details(display).get("content")) == (
+        '<pre><code class="language-python">'
+        "print('&lt;b&gt;&amp;amp;&lt;/b&gt;')</code></pre>"
+    )
+    assert display.show_request is False
+
+
+def test_console_translator_skips_details_without_usable_code():
+    # Note-only call: no code argument, so no language and no details slot.
+    note_only = _result(
+        _request(name="send", arguments={"note": "Just a thought"}),
+        extra=_console_extra(),
+    )
+    display = _display(note_only)
+    assert display.title == "Just a thought"
+    assert display.icon is None
+    assert display.details is None
+
+    # A code argument holding a non-string yields no language.
+    non_string = _result(
+        _request(name="send", arguments={"note": "n", "r": 42}),
+        extra=_console_extra(),
+    )
+    display = _display(non_string)
+    assert display.title == "n"
+    assert display.icon is None
+    assert display.details is None
+
+    # Unknown language: no icon (existing rule) and no details slot.
+    unknown = _result(
+        _request(name="send", arguments={"note": "n", "julia": "1 + 1"}),
+        extra=_console_extra(),
+    )
+    display = _display(unknown)
+    assert display.title == "n"
+    assert display.icon is None
+    assert display.details is None
+
+
+def test_console_translator_escapes_and_falls_back():
+    result = _result(
+        _request(
+            name="send",
+            arguments={
+                "python": "print(1)",
+                "note": "<b>raw</b> & dangerous",
+            },
+        ),
+        extra=_console_extra(),
+    )
+    display = _display(result)
+    assert display.title == "&lt;b&gt;raw&lt;/b&gt; &amp; dangerous"
+
+    # No note: the language display name titles the card.
+    language_only = _result(
+        _request(name="send", arguments={"sql": "SELECT 1"}),
+        extra=_console_extra(),
+    )
+    assert _display(language_only).title == "SQL"
+
+
+def test_console_translator_drops_language_prefix_redundant_with_icon():
+    cases = [
+        ("R code: sum of squares", "r", "Sum of squares"),
+        ("Python plots: sine wave", "python", "Sine wave"),
+        ("SQL code: join the tables", "sql", "Join the tables"),
+        # A prefix-only line falls through to the next line
+        ("R plots:\nSine wave", "r", "Sine wave"),
+        # ...or, with nothing after it, to the language name
+        ("R code:", "r", "R"),
+        # Case-insensitive
+        ("r code: lowercase", "r", "Lowercase"),
+        # No noun, no strip: the title is the author's
+        ("R: a love letter", "r", "R: a love letter"),
+        # A noun without a following colon is not a label
+        ("R code review: dplyr", "r", "R code review: dplyr"),
+        # Ordinary titles are untouched
+        ("Sum of 1 to 100", "r", "Sum of 1 to 100"),
+    ]
+    for note, language, expected in cases:
+        result = _result(
+            _request(name="send", arguments={language: "x", "note": note}),
+            extra=_console_extra(),
+        )
+        display = _display(result)
+        assert display.title == expected, note
+
+
+def test_content_extra_text_renders_as_code_not_markdown():
+    from chatlas.types import ContentImageInline, ContentText
+
+    # Program output interleaved with an image must keep its whitespace:
+    # markdown rendering collapses aligned columns into flowing prose and
+    # turns 4-space-indented lines (e.g. an R data.frame header) into
+    # accidental code blocks.
+    output = "           x         y group\n1  7.741917 13.602896     A"
+    result = _result(
+        _request(
+            name="send",
+            arguments={"r": "head(data); plot(data)", "note": "n"},
+        ),
+        value=[
+            ContentText(text=output),
+            ContentImageInline(data="aGk=", image_content_type="image/png"),
+        ],
+        extra=_console_extra(),
+    )
+    display = _display(result)
+    value, value_type = tool_result_display(result, display)
+    assert value_type == "content_extra"
+    items = json.loads(cast(str, value))
+    assert items[0] == {
+        "type": "text",
+        "value": output,
+        "value_type": "code",
+    }
+    assert items[1]["type"] == "image"
+
+    # Plain strings in a mixed value (the native chatlas MCP convention)
+    # get the same treatment.
+    native = _result(
+        _request(arguments={"r": "head(data); plot(data)"}),
+        value=[
+            output,
+            ContentImageInline(data="aGk=", image_content_type="image/png"),
+        ],
+    )
+    value, value_type = tool_result_display(native, ToolResultDisplay())
+    items = json.loads(cast(str, value))
+    assert items[0]["value_type"] == "code"
+
+
+def test_content_extra_pure_text_parts_keep_markdown():
+    from chatlas.types import ContentText
+
+    # No binary sibling means no program output to protect, so multi-part
+    # text keeps markdown rendering.
+    result = _result(
+        _request(arguments={"r": "x"}),
+        value=[
+            ContentText(text="**see** the plot"),
+            ContentText(text="details below"),
+        ],
+    )
+    value, value_type = tool_result_display(result, ToolResultDisplay())
+    assert value_type == "content_extra"
+    items = json.loads(cast(str, value))
+    assert [item["value_type"] for item in items] == ["markdown", "markdown"]
+
+
+def test_display_lookup_ignores_near_miss_keys():
+    # The bare `display` key lookup is exact: "display/foo" must not match.
+    result = _result(
+        _request(arguments={"r": "x"}),
+        value="42",
+        extra={"display/foo": {"text": "nope"}},
+    )
+    assert _display(result) == ToolResultDisplay()
+
+
+def test_console_translator_trims_trailing_blank_lines_from_code():
+    result = _result(
+        _request(name="send", arguments={"r": "plot(x)\n\n\n", "note": "n"}),
+        extra=_console_extra(),
+    )
+    display = _display(result)
+    assert display.details is not None
+    assert (
+        str(_details(display).get("content"))
+        == '<pre><code class="language-r">plot(x)</code></pre>'
+    )
+
+
+def test_console_translator_bare_display_wins():
+    both = _result(
+        _request(name="send", arguments={"r": "x", "note": "Server note"}),
+        extra={
+            "display": {"title": "Author title"},
+            **_console_extra(),
+        },
+    )
+    assert _display(both).title == "Author title"
+
+
+# ---------------------------------------------------------------------------
 # Collapsible details slot (`details`)
 # ---------------------------------------------------------------------------
 
@@ -1166,6 +1470,7 @@ def test_tool_result_details_slot_serializes():
     # HTML content leaves the flavor at the client's default ("html").
     assert "details_type" not in block
     assert block.get("details_summary") == "Code"
+    # No explicit open: unset on the wire, the client's policy decides.
     assert "details_open" not in block
 
 
@@ -1239,3 +1544,43 @@ def test_details_markdown_round_trips_as_markdown():
     block = _result_block(result)
     assert block.get("details") == "**x**"
     assert block.get("details_type") == "markdown"
+
+
+# ---------------------------------------------------------------------------
+# Open settings: explicit-only on the wire (the policy is client-side)
+# ---------------------------------------------------------------------------
+
+
+def test_open_serializes_only_when_explicit():
+    # The content-type open policy is resolved client-side; the server
+    # ships explicit author settings only, false included.
+    opened = _result(_request(), extra={"display": {"open": True}})
+    block = _result_block(opened)
+    assert block.get("expanded") is True
+
+    closed = _result(_request(), extra={"display": {"open": False}})
+    block = _result_block(closed)
+    assert block.get("expanded") is False
+
+    unset = _result(_request(), extra={"display": {"title": "T"}})
+    block = _result_block(unset)
+    assert "expanded" not in block
+
+
+def test_details_open_serializes_only_when_explicit():
+    unset = _result(
+        _request(), extra={"display": {"details": HTML("<pre>code</pre>")}}
+    )
+    block = _result_block(unset)
+    assert "details_open" not in block
+
+    explicit = _result(
+        _request(),
+        extra={
+            "display": {
+                "details": {"content": HTML("<pre>code</pre>"), "open": True}
+            }
+        },
+    )
+    block = _result_block(explicit)
+    assert block.get("details_open") is True
